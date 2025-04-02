@@ -102,10 +102,9 @@ select = [
 
 ignore = [
     "E501",    # line too long (handled by the formatter)
-    "ANN101",  # missing-type-self
-    "ANN102",  # missing-type-cls
     "ANN401",  # any-type
     "TRY003",  # long-exception-message (can conflict with good error messages)
+    "COM812",  # Commas should be on the line after the comma
     "RET504",  # unnecessary-assign-return
     "PLR0913", # too-many-arguments (can be helpful for tool arguments)
 ]
