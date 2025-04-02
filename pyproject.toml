@@ -1,0 +1,134 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jackknife"
+version = "0.1.0-alpha"  # WIP marker in version
+authors = [
+    { name = "Alan Synn", email = "alan@alansynn.com" },
+]
+description = "A multi-tool runner with isolated environments per tool. 🔪"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Utilities",
+    "Development Status :: 3 - Alpha",  # WIP status
+]
+# No runtime dependencies needed for the core runner itself yet
+# Dependencies for the *tools* are handled separately
+dependencies = [
+    "rich>=13.0.0",  # For pretty terminal output
+]
+
+[project.urls]
+"Homepage" = "https://github.com/alansynn/jackknife"
+"Bug Tracker" = "https://github.com/alansynn/jackknife/issues"
+
+[project.scripts]
+jackknife = "jackknife.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+python_classes = "Test*"
+addopts = "--cov=jackknife --cov-report=term-missing --cov-report=html --cov-report=xml"
+
+[tool.coverage.run]
+source = ["jackknife"]
+omit = ["tests/*", "*/test_*.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.0.0",
+]
+
+[tool.setuptools]
+packages = ["jackknife"]
+
+[tool.ruff]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)
+# Updated to include more rules per Ruff's capabilities
+line-length = 88
+indent-width = 4
+target-version = "py38"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "C4",  # flake8-comprehensions
+    "B",   # flake8-bugbear
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "ANN", # flake8-annotations (optional)
+    "S",   # flake8-bandit (security)
+    "A",   # flake8-builtins
+    "COM", # flake8-commas
+    "C90", # mccabe complexity
+    "EM",  # flake8-errmsg
+    "ICN", # flake8-import-conventions
+    "ISC", # flake8-implicit-str-concat
+    "PIE", # flake8-pie
+    "PT",  # flake8-pytest-style
+    "RET", # flake8-return
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "ARG", # flake8-unused-arguments
+    "ERA", # eradicate commented-out code
+    "PL",  # pylint
+    "TRY", # tryceratops
+]
+
+ignore = [
+    "E501",    # line too long (handled by the formatter)
+    "ANN101",  # missing-type-self
+    "ANN102",  # missing-type-cls
+    "ANN401",  # any-type
+    "TRY003",  # long-exception-message (can conflict with good error messages)
+    "RET504",  # unnecessary-assign-return
+    "PLR0913", # too-many-arguments (can be helpful for tool arguments)
+]
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.per-file-ignores]
+"tests/*" = [
+    "S101",   # Use of assert
+    "ANN",    # Missing type annotations
+    "SIM300", # for Yoda conditions
+]
+
+[tool.ruff.isort]
+known-first-party = ["jackknife"]
+lines-after-imports = 2
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

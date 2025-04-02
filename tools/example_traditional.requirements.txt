@@ -1,0 +1,3 @@
+# Example requirements for the traditional tool
+# In a real tool, you would list actual dependencies here
+rich>=13.0.0

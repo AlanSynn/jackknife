@@ -1,0 +1,2 @@
+# Requirements for the dummy tool
+# This is intentionally empty to test tools without dependencies

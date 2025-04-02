@@ -1,0 +1,66 @@
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)
+# Updated to include more rules per Ruff's capabilities
+line-length = 88
+indent-width = 4
+target-version = "py38"
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "C4",  # flake8-comprehensions
+    "B",   # flake8-bugbear
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "ANN", # flake8-annotations (optional)
+    "S",   # flake8-bandit (security)
+    "A",   # flake8-builtins
+    "COM", # flake8-commas
+    "C90", # mccabe complexity
+    "EM",  # flake8-errmsg
+    "ICN", # flake8-import-conventions
+    "ISC", # flake8-implicit-str-concat
+    "PIE", # flake8-pie
+    "PT",  # flake8-pytest-style
+    "RET", # flake8-return
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "ARG", # flake8-unused-arguments
+    "ERA", # eradicate commented-out code
+    "PL",  # pylint
+    "TRY", # tryceratops
+]
+
+ignore = [
+    "E501",    # line too long (handled by the formatter)
+    "ANN101",  # missing-type-self
+    "ANN102",  # missing-type-cls
+    "ANN401",  # any-type
+    "TRY003",  # long-exception-message (can conflict with good error messages)
+    "RET504",  # unnecessary-assign-return
+    "PLR0913", # too-many-arguments (can be helpful for tool arguments)
+]
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[lint.per-file-ignores]
+"tests/*" = [
+    "S101",   # Use of assert
+    "ANN",    # Missing type annotations
+    "SIM300", # for Yoda conditions
+]
+
+[lint.isort]
+known-first-party = ["jackknife"]
+lines-after-imports = 2
+
+[lint.mccabe]
+max-complexity = 12
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

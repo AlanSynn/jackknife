@@ -1,0 +1,9 @@
+# Requirements for the giftomp4 tool
+Pillow>=10.0.0
+
+# Optional dependency for prettier console output
+rich>=13.0.0
+
+# Uncomment for actual conversion functionality in the future:
+# imageio>=2.22.0
+# imageio-ffmpeg>=0.4.7
