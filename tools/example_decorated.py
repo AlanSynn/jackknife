@@ -6,19 +6,19 @@ This example shows how to create a tool using the @tool decorator,
 which automatically handles argument parsing.
 """
 
-from jackknife.tool_helpers import tool, argument
+from jackknife.tool_helpers import argument, tool
 
 
 @tool
 def example_decorated(
-    input_file: argument(help="Path to the input file to process"),
-    output_file: argument(help="Path to save the output", required=False) = None,
-    verbose: argument(flag=True, help="Enable verbose output", short_name="v") = False,
+    input_file: argument(help_text="Path to the input file to process"),
+    output_file: argument(help_text="Path to save the output", required=False) = None,
+    verbose: argument(flag=True, help_text="Enable verbose output", short_name="v") = False,
     mode: argument(
-        help="Processing mode", choices=["fast", "normal", "thorough"]
+        help_text="Processing mode", choices=["fast", "normal", "thorough"]
     ) = "normal",
-    count: argument(help="Number of times to process", type=int) = 1,
-):
+    count: argument(help_text="Number of times to process", type=int) = 1,
+) -> int:
     """
     Example tool that demonstrates the Jackknife decorator system.
 
@@ -34,7 +34,7 @@ def example_decorated(
         print("No output file specified, results will be printed to stdout")
 
     if verbose:
-        print(f"Verbose mode enabled")
+        print("Verbose mode enabled")
         print(f"Using mode: {mode}")
         print(f"Processing count: {count}")
 

@@ -6,9 +6,11 @@ This tool converts GIF animations to MP4 video files using Pillow and imageio.
 """
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
+
 
 # Try importing dependencies
 try:
@@ -21,8 +23,16 @@ except ImportError:
 # Try importing Rich for better output (if available)
 try:
     from rich.console import Console
-    from rich.progress import Progress, BarColumn, TextColumn
     from rich.panel import Panel
+    from rich.progress import (
+        BarColumn,
+        MofNCompleteColumn,
+        PercentageColumn,
+        Progress,
+        SpinnerColumn,
+        TextColumn,
+        TimeElapsedColumn,
+    )
 
     console = Console()
     RICH_AVAILABLE = True
@@ -34,86 +44,160 @@ def convert_gif_to_mp4(input_path: str, output_path: str, fps: int) -> None:
     """
     Convert a GIF animation to MP4 video format.
 
-    This is currently a placeholder simulation.
+    Args:
+        input_path: Path to the input GIF file
+        output_path: Path to save the output MP4 file
+        fps: Frames per second for the output video
     """
-    if RICH_AVAILABLE:
-        console.print(
-            f"Converting '[bold cyan]{input_path}[/]' to '[bold green]{output_path}[/]' at [bold]{fps}[/] FPS"
-        )
-        console.print(f"Using Pillow version: [bold yellow]{PILLOW_VERSION}[/]")
-    else:
-        print(f"Converting '{input_path}' to '{output_path}' at {fps} FPS")
-        print(f"Using Pillow version: {PILLOW_VERSION}")
+    # Validation and imports are extracted to separate functions
+    _validate_input_output_paths(input_path, output_path)
 
-    # Example using Pillow to open and analyze the GIF
+    # Import required libraries
+    imaging_libs = _import_required_libraries()
+    if not imaging_libs:
+        return
+
+    # Process the frames
+    frames, result = _process_gif_frames(input_path, fps, imaging_libs)
+    if not frames:
+        return
+
+    # Write output video
+    _write_output_video(frames, output_path, fps, imaging_libs)
+
+    # Show completion
+    print(f"Conversion completed: {output_path}")
+
+
+def _validate_input_output_paths(input_path: str, output_path: str) -> None:
+    """Validate input and output paths."""
+    # Check if input file exists
+    if not os.path.isfile(input_path):
+        print(f"Error: Input file '{input_path}' not found")
+        sys.exit(1)
+
+    # Check if input file is a GIF
+    if not input_path.lower().endswith('.gif'):
+        print("Error: Input file must be a GIF file")
+        sys.exit(1)
+
+    # Check if output directory exists
+    output_dir = os.path.dirname(output_path)
+    if output_dir and not os.path.isdir(output_dir):
+        print(f"Error: Output directory '{output_dir}' does not exist")
+        sys.exit(1)
+
+    # Check if output is MP4
+    if not output_path.lower().endswith('.mp4'):
+        print("Warning: Output file should have .mp4 extension")
+        if '.' not in os.path.basename(output_path):
+            output_path += '.mp4'
+            print(f"Output path adjusted to: {output_path}")
+
+
+def _import_required_libraries() -> dict:
+    """Import required libraries for GIF to MP4 conversion."""
     try:
-        with Image.open(input_path) as im:
-            if RICH_AVAILABLE:
-                console.print(
-                    f"[green]Successfully opened[/] '{input_path}' with Pillow"
-                )
-                console.print(
-                    f"Image format: [cyan]{im.format}[/], Size: [cyan]{im.size}[/], Mode: [cyan]{im.mode}[/]"
-                )
+        import cv2
+        import numpy as np
+        from PIL import Image
+    except ImportError as e:
+        module_name = str(e).split("'")[1] if "'" in str(e) else str(e)
+        print(f"Error: Required library not found: {module_name}")
+        print("Please install the required dependencies:")
+        print("  pip install numpy pillow opencv-python")
+        return None
+    else:
+        return {"np": np, "Image": Image, "cv2": cv2}
 
-                if getattr(im, "is_animated", False):
-                    console.print(
-                        f"Detected [bold cyan]{getattr(im, 'n_frames', 1)}[/] frames"
-                    )
-                else:
-                    console.print(
-                        "[yellow]Warning:[/] Input might not be an animated GIF"
-                    )
-            else:
-                print(f"Successfully opened '{input_path}' with Pillow")
-                print(f"Image format: {im.format}, Size: {im.size}, Mode: {im.mode}")
+def _process_gif_frames(input_path: str, fps: int, libs: dict) -> tuple:
+    """Process GIF frames and convert to format suitable for video."""
+    np = libs["np"]
+    image = libs["Image"]
+    cv2 = libs["cv2"]
 
-                if getattr(im, "is_animated", False):
-                    print(f"Detected {getattr(im, 'n_frames', 1)} frames")
-                else:
-                    print("Warning: Input might not be an animated GIF")
-    except Exception as e:
-        if RICH_AVAILABLE:
-            console.print(f"[bold red]Error processing image:[/] {e}")
-        else:
-            print(f"Error processing image: {e}")
+    try:
+        # Open the GIF file
+        gif = image.open(input_path)
 
-    # Simulate conversion process
-    if RICH_AVAILABLE:
-        console.print("Processing frames...")
+        # Get the number of frames
+        frame_count = 0
+        try:
+            while True:
+                gif.seek(frame_count)
+                frame_count += 1
+        except EOFError:
+            pass
+
+        print(f"Processing {frame_count} frames at {fps} FPS")
+
+        # Reset to first frame
+        gif.seek(0)
+
+        # Process frames with progress indicator
+        frames = []
+
         with Progress(
+            SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+        ) as progress:
+            task = progress.add_task("Processing frames", total=frame_count)
+
+            for frame_idx in range(frame_count):
+                gif.seek(frame_idx)
+                frame = gif.convert('RGB')
+
+                # Convert PIL Image to OpenCV format (numpy array)
+                frame_np = np.array(frame)
+
+                # OpenCV uses BGR instead of RGB
+                frame_cv = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
+
+                frames.append(frame_cv)
+                progress.update(task, advance=1)
+
+
+    except Exception as e:
+        print(f"Error processing GIF: {e}")
+        return None, False
+    else:
+        return frames, True
+
+
+def _write_output_video(frames: list, output_path: str, fps: int, libs: dict) -> None:
+    """Write frames to MP4 video file."""
+    cv2 = libs["cv2"]
+
+    try:
+        # Get frame dimensions
+        height, width, _ = frames[0].shape
+
+        # Create VideoWriter
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+        # Write frames to video
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            PercentageColumn(),
         ) as progress:
             task = progress.add_task("Converting", total=100)
-            for i in range(10):
+            for _ in range(10):  # Simulate progress in 10 steps
                 time.sleep(0.3)  # Simulate work
                 progress.update(task, advance=10)
-    else:
-        print("Processing frames...")
-        for i in range(5):
-            time.sleep(0.3)  # Simulate work
-            print(f"Progress: {(i + 1) * 20}%")
 
-    # Create a dummy output file for demo purposes
-    if output_path and not Path(output_path).exists():
-        try:
-            Path(output_path).touch()
-            if RICH_AVAILABLE:
-                console.print(f"[green]Created output file:[/] {output_path}")
-            else:
-                print(f"Created output file: {output_path}")
-        except Exception as e:
-            if RICH_AVAILABLE:
-                console.print(f"[bold red]Error creating output file:[/] {e}")
-            else:
-                print(f"Error creating output file: {e}")
+        for frame in frames:
+            out.write(frame)
 
-    if RICH_AVAILABLE:
-        console.print(Panel("Conversion complete!", style="green"))
-    else:
-        print("Conversion complete!")
+        # Release the VideoWriter
+        out.release()
+    except Exception as e:
+        print(f"Error creating video: {e}")
 
 
 def main() -> None:

@@ -10,7 +10,7 @@ import argparse
 import sys
 
 
-def main():
+def main() -> int:
     """
     Example tool implementation.
 
@@ -47,7 +47,7 @@ def main():
         print("No output file specified, results will be printed to stdout")
 
     if args.verbose:
-        print(f"Verbose mode enabled")
+        print("Verbose mode enabled")
         print(f"Using mode: {args.mode}")
         print(f"Processing count: {args.count}")
 
