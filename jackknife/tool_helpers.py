@@ -10,7 +10,8 @@ import functools
 import inspect
 import sys
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union, get_type_hints
+from typing import Any, Callable, List, Optional, TypeVar, Union, get_type_hints
+
 
 # Type definitions
 T = TypeVar("T")
@@ -39,8 +40,8 @@ _ARGUMENT_REGISTRY = {}
 
 
 def argument(
-    help: str = "",
-    type: Any = None,
+    help_text: str = "",
+    arg_type: Any = None,
     default: Any = None,
     choices: Optional[List[Any]] = None,
     required: bool = None,
@@ -58,14 +59,14 @@ def argument(
     Example:
         @tool
         def my_tool(
-            input_file: argument(help="Input file path"),
-            verbose: argument(flag=True, help="Enable verbose output") = False
+            input_file: argument(help_text="Input file path"),
+            verbose: argument(flag=True, help_text="Enable verbose output") = False
         ):
             # Implementation
 
     Args:
-        help: Help text for the argument
-        type: Type of the argument (e.g., int, float)
+        help_text: Help text for the argument
+        arg_type: Type of the argument (e.g., int, float)
         default: Default value if argument is not provided
         choices: List of allowed values
         required: Whether the argument is required
@@ -80,8 +81,8 @@ def argument(
     # Create an ArgumentSpec instance
     arg_spec = ArgumentSpec(
         name=None,  # Will be set by @tool based on parameter name
-        help=help,
-        type=type,
+        help=help_text,
+        type=arg_type,
         default=default,
         choices=choices,
         required=required,
@@ -102,7 +103,7 @@ def argument(
     return AnnotatedType
 
 
-def _get_arg_spec(arg_type):
+def _get_arg_spec(arg_type: Any) -> Optional[ArgumentSpec]:
     """
     Get the argument spec for a type annotation.
 
@@ -119,15 +120,15 @@ def _get_arg_spec(arg_type):
     return None
 
 
-def tool(func: Optional[Callable] = None, *, description: Optional[str] = None):
+def tool(func: Optional[Callable] = None, *, description: Optional[str] = None) -> Callable: # noqa: C901
     """
     Decorator to turn a function into a Jackknife tool with automatic argument parsing.
 
     Example:
         @tool
         def my_tool(
-            input_file: argument(help="Input file path"),
-            verbose: argument(flag=True, help="Enable verbose output") = False
+            input_file: argument(help_text="Input file path"),
+            verbose: argument(flag=True, help_text="Enable verbose output") = False
         ):
             # Implementation
 
@@ -145,7 +146,7 @@ def tool(func: Optional[Callable] = None, *, description: Optional[str] = None):
         type_hints = get_type_hints(func)
 
         @functools.wraps(func)
-        def wrapper():
+        def wrapper() -> int: # noqa: PLR0912
             """Wrapper function that handles argument parsing."""
             # Create parser
             desc = description or func.__doc__ or f"Jackknife tool: {func.__name__}"
