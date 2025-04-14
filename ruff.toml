@@ -39,6 +39,8 @@ ignore = [
     "COM812",  # Commas should be on the line after the comma
     "RET504",  # unnecessary-assign-return
     "PLR0913", # too-many-arguments (can be helpful for tool arguments)
+    "ARG005",  # Unused argument
+    "PLR0915", # too-many-statements
 ]
 
 # Allow unused variables when underscore-prefixed.
