@@ -1,4 +1,6 @@
-# 🔪 Jackknife Multi-Tool Runner 🧰
+# Jackknife
+
+<img src="static/jackknife-logo.png" alt="Jackknife Logo" width="400"/>
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -7,43 +9,45 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-> **⚠️ WORK IN PROGRESS ⚠️**
+> **⚠️ WORK IN PROGRESS**
 > This project is still in early development. Features may change, break, or be completely removed.
 
-Jackknife is a command-line utility that allows you to run various Python tool scripts, each within its own isolated virtual environment managed by `uv`. 🛠️
+Jackknife is a command-line utility that allows you to run various Python tool scripts, each within its own isolated virtual environment managed by `uv`.
 
-## ✨ Features
+## Features
 
-- 🔒 **Isolated Environments**: Each tool runs in its own dedicated virtual environment
-- 🚀 **Fast Setup**: Uses `uv` for lightning-fast dependency installation
-- 🧩 **Modular Design**: Add new tools without modifying the core code
-- 🔄 **Easy Updates**: Update tool dependencies without affecting other tools
-- 📦 **Zero Global Pollution**: No global package installations required
-- 🧙‍♂️ **No-Boilerplate Tools**: Create tools without writing repetitive argparse code
+- **Isolated Environments**: Each tool runs in its own dedicated virtual environment
+- **Fast Setup**: Uses `uv` for lightning-fast dependency installation
+- **Modular Design**: Add new tools without modifying the core code
+- **Easy Updates**: Update tool dependencies without affecting other tools
+- **Zero Global Pollution**: No global package installations required
+- **No-Boilerplate Tools**: Create tools without writing repetitive argparse code
+- **Cascading Execution**: Run multiple tools in sequence with a single command
+- **Environment Optimization**: Reuse compatible environments when possible to save space
 
-## 📋 Prerequisites
+## Prerequisites
 
-- **🐍 Python**: Version 3.8 or higher
-- **⚡ uv**: The extremely fast Python package installer and resolver
+- **Python**: Version 3.8 or higher
+- **uv**: The extremely fast Python package installer and resolver
 
   ```bash
-  # 🐧 Linux/macOS
+  # Linux/macOS
   curl -LsSf https://astral.sh/uv/install.sh | sh
 
-  # 🪟 Windows
+  # Windows
   powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
   ```
-  Verify installation: `uv --version` ✅
+  Verify installation: `uv --version`
 
-## 🚀 Installation
+## Installation
 
-1. **📥 Clone the repository:**
+1. **Clone the repository:**
    ```bash
    git clone https://github.com/alansynn/jackknife.git
    cd jackknife
    ```
 
-2. **📦 Install Jackknife:**
+2. **Install Jackknife:**
    ```bash
    # Regular installation
    pip install .
@@ -55,7 +59,7 @@ Jackknife is a command-line utility that allows you to run various Python tool s
    pip install -e ".[dev]"
    ```
 
-## 🛠️ Usage
+## Usage
 
 Run tools using the following format:
 
@@ -66,7 +70,7 @@ jackknife <tool_name> [tool_arguments...]
 - `<tool_name>`: The name of the tool script (without the `.py` extension) in the `tools/` directory
 - `[tool_arguments...]`: Any arguments you want to pass directly to the tool script
 
-### 📽️ Example
+### Example
 
 Using the included `giftomp4` tool:
 
@@ -78,14 +82,71 @@ jackknife giftomp4 --help
 jackknife giftomp4 my_animation.gif -o my_video.mp4 --fps 24 --verbose
 ```
 
-## 🔍 How It Works
+### Cascading Tool Execution
 
-1. When you run `jackknife giftomp4 ...`, the script finds `tools/giftomp4.py` 🔎
-2. It checks for a corresponding virtual environment in `~/.jackknife_envs/giftomp4` 🏠
-3. If needed, it creates the environment and installs required dependencies 📦
-4. It executes the tool with your arguments using the isolated Python interpreter 🚀
+You can run multiple tools in sequence with a single command:
 
-## 🧰 Adding New Tools
+```bash
+# Run multiple tools in sequence
+jackknife tool1,tool2,tool3
+
+# Stop on first error (default behavior)
+jackknife tool1,tool2,tool3
+
+# Continue even if a tool fails
+jackknife tool1,tool2,tool3 --continue-on-error
+```
+
+#### Tool-Specific Arguments
+
+You can provide arguments for each tool using square brackets:
+
+```bash
+# Run tools with their own arguments
+jackknife "tool1[--option value],tool2[arg1 arg2],tool3[--flag]"
+```
+
+> **Note**: When using tool-specific arguments, you need to quote the entire command in most shells to prevent the brackets from being interpreted by the shell.
+
+### Environment Sharing
+
+Jackknife can optimize disk space usage by reusing compatible environments:
+
+```bash
+# Enable environment sharing (default)
+jackknife mytool
+
+# Disable environment sharing
+jackknife --no-share-environments mytool
+```
+
+You can also control this behavior globally with an environment variable:
+
+```bash
+# Disable environment sharing globally
+export JACKKNIFE_SHARE_ENVIRONMENTS=false
+jackknife mytool
+
+# Enable environment sharing globally
+export JACKKNIFE_SHARE_ENVIRONMENTS=true
+jackknife mytool
+```
+
+When environment sharing is enabled, Jackknife will:
+1. Check if a tool's requirements are a subset of an existing environment
+2. If found, create a symlink to the existing environment instead of a new one
+3. Use the shared environment for running the tool
+
+This is particularly useful when you have many tools with overlapping dependencies.
+
+## How It Works
+
+1. When you run `jackknife giftomp4 ...`, the script finds `tools/giftomp4.py`
+2. It checks for a corresponding virtual environment in `~/.jackknife_envs/giftomp4`
+3. If needed, it creates the environment and installs required dependencies
+4. It executes the tool with your arguments using the isolated Python interpreter
+
+## Adding New Tools
 
 There are two ways to create tools for Jackknife:
 
@@ -149,11 +210,11 @@ if __name__ == "__main__":
 
 ### Both approaches work with jackknife:
 
-1. Create your Python script (e.g., `mytool.py`) inside the `tools/` directory 📝
-2. If your tool has dependencies, list them in `mytool.requirements.txt` in the same directory 📋
-3. Run it: `jackknife mytool [arguments...]` 🚀
+1. Create your Python script (e.g., `mytool.py`) inside the `tools/` directory
+2. If your tool has dependencies, list them in `mytool.requirements.txt` in the same directory
+3. Run it: `jackknife mytool [arguments...]`
 
-## 🌐 Environment Location
+## Environment Location
 
 By default, environments are stored in `~/.jackknife_envs/`. You can change this location:
 
@@ -162,7 +223,9 @@ export JACKKNIFE_ENVS_DIR=/path/to/your/envs
 jackknife giftomp4 input.gif
 ```
 
-## 👮‍♂️ Code Quality
+Jackknife will create separate environments for each tool, or reuse compatible environments if sharing is enabled.
+
+## Code Quality
 
 Jackknife uses several tools to maintain high code quality:
 
@@ -193,7 +256,7 @@ pre-commit install
 
 This will automatically check the code quality before each commit.
 
-## 🧪 Testing
+## Testing
 
 Jackknife includes a comprehensive test suite using pytest and coverage reporting.
 
@@ -236,18 +299,20 @@ Current test coverage: **91%**
 - **Integration Tests**: Test how components work together
 - **Functional Tests**: End-to-end tests using real subprocess calls
 
-## 📝 Todo
+## Todo
 
 - [x] Add boilerplate-free tool development with decorators
 - [x] Add Ruff for linting and formatting
 - [x] Add pre-commit hooks
+- [x] Add cascading tool execution
+- [x] Add environment sharing for compatible tools
 - [ ] Add tool discovery plugins
 - [ ] Add caching for faster startup
 - [ ] Add shared environment option
 - [ ] Implement tool update command
 - [ ] Add tool versions and dependency locking
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -259,6 +324,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 Make sure to run tests and pre-commit hooks before submitting your PR.
 
-## 📄 License
+## License
 
 MIT License - See LICENSE file for details
