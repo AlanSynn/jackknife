@@ -2,8 +2,6 @@
 Pytest configuration and fixtures for the Jackknife project.
 """
 
-import os
-import sys
 import shutil
 import tempfile
 from pathlib import Path
@@ -31,7 +29,7 @@ def mock_tools_dir(temp_dir):
         if tool_file.is_file():
             shutil.copy(tool_file, tools_dir / tool_file.name)
 
-    yield tools_dir
+    return tools_dir
 
 
 @pytest.fixture
@@ -39,7 +37,7 @@ def mock_env_dir(temp_dir):
     """Create a temporary directory for environments."""
     env_dir = temp_dir / "envs"
     env_dir.mkdir()
-    yield env_dir
+    return env_dir
 
 
 @pytest.fixture

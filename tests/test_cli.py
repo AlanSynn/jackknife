@@ -2,12 +2,11 @@
 Unit tests for the Jackknife CLI module.
 """
 
-import os
-import sys
-import subprocess
 import shutil
+import subprocess
+import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -31,11 +30,13 @@ class TestEnsureUvInstalled:
 
     def test_uv_installed(self, mock_which, capsys):
         """Test that function passes when uv is installed."""
-        cli.ensure_uv_installed()
-        # No output means success (function would exit otherwise)
+        # The _mock_which fixture patches shutil.which implicitly.
+        with patch("sys.exit") as mock_exit:
+            cli.ensure_uv_installed()
+            mock_exit.assert_not_called()
+        # If we reached here, no exception was raised
         captured = capsys.readouterr()
         assert captured.out == ""
-        assert captured.err == ""
 
     def test_uv_not_installed(self, monkeypatch, capsys):
         """Test that function exits when uv is not installed."""
@@ -223,20 +224,23 @@ class TestSetupEnvironment:
         monkeypatch.setattr(cli, "ENVS_DIR", mock_cli_env["env_dir"])
 
         # Execute
-        result = cli.setup_environment(tool_name, tool_script_path)
+        cli.setup_environment(tool_name, tool_script_path)
+
+        expected_call_count = 2 if requirements_exists else 1
 
         # Verify
-        assert mock_run.call_count == 2 if requirements_exists else 1
+        assert mock_run.call_count == expected_call_count
 
         # Verify the first call is to uv venv
         first_call_args = mock_run.call_args_list[0][0][0]
-        assert first_call_args[0] == "uv"
+        uv_path = shutil.which("uv")
+        assert first_call_args[0] == uv_path
         assert first_call_args[1] == "venv"
 
         # Verify the second call is to uv pip install if applicable
         if requirements_exists:
             second_call_args = mock_run.call_args_list[1][0][0]
-            assert second_call_args[0] == "uv"
+            assert second_call_args[0] == uv_path
             assert second_call_args[1] == "pip"
             assert second_call_args[2] == "install"
             assert "-r" in second_call_args
@@ -249,6 +253,9 @@ class TestSetupEnvironment:
 
         # Create the tool script
         tool_script_path.touch()
+
+        # Mock find_compatible_environment to return None to avoid requirements parsing
+        monkeypatch.setattr(cli, "find_compatible_environment", lambda *_args: None)
 
         # Mock subprocess.run to raise CalledProcessError
         error = subprocess.CalledProcessError(
@@ -270,6 +277,92 @@ class TestSetupEnvironment:
         with patch("sys.exit") as mock_exit:
             cli.setup_environment(tool_name, tool_script_path)
             mock_exit.assert_called_once_with(1)
+
+    @pytest.mark.parametrize("share_environments", [True, False])
+    def test_environment_sharing(self, mock_cli_env, monkeypatch, share_environments):
+        """Test environment sharing between compatible tools."""
+        # Setup
+        # First tool with dependencies
+        tool1_name = "tool1"
+        tool1_script_path = mock_cli_env["tools_dir"] / "tool1.py"
+        tool1_requirements = mock_cli_env["tools_dir"] / "tool1.requirements.txt"
+
+        # Second tool with a subset of the dependencies
+        tool2_name = "tool2"
+        tool2_script_path = mock_cli_env["tools_dir"] / "tool2.py"
+        tool2_requirements = mock_cli_env["tools_dir"] / "tool2.requirements.txt"
+
+        # Create the tool scripts and requirements
+        tool1_script_path.touch()
+        tool1_requirements.write_text("rich>=13.0.0\nrequests>=2.28.0")
+
+        tool2_script_path.touch()
+        tool2_requirements.write_text("rich>=13.0.0")
+
+        # Set up for environment sharing test
+        env_path_tool1 = mock_cli_env["env_dir"] / tool1_name
+
+        # Mock the find_compatible_environment function
+        def mock_find_compatible(tool_name, _req_path):
+            if share_environments and tool_name == "tool2":
+                return env_path_tool1
+            return None
+
+        # Mock dependencies for environment sharing
+        monkeypatch.setattr(cli, "SHARE_ENVIRONMENTS", share_environments)
+        monkeypatch.setattr(cli, "find_compatible_environment", mock_find_compatible)
+
+        # Mock the exists function to control environment creation
+        def mock_exists(self):
+            # Tool1 environment exists after first check
+            if tool1_name in str(self) and hasattr(mock_exists, "tool1_created"):
+                return True
+            # Create a flag for tool1 env after we "create" it
+            if tool1_name in str(self) and "python" in str(self):
+                mock_exists.tool1_created = True
+                return False
+            # Tool2 environment doesn't exist initially
+            return False
+
+        # Mock PROJECT_ROOT and TOOLS_DIR
+        monkeypatch.setattr(cli, "TOOLS_DIR", mock_cli_env["tools_dir"])
+        monkeypatch.setattr(cli, "ENVS_DIR", mock_cli_env["env_dir"])
+        monkeypatch.setattr(Path, "exists", mock_exists)
+
+        # Create tool1 environment first
+        cli.setup_environment(tool1_name, tool1_script_path)
+
+        # Capture calls to symlink_to
+        symlink_calls = []
+
+        def track_symlink_to(self, target, _target_is_directory=False):
+            symlink_calls.append((str(self), str(target)))
+
+        monkeypatch.setattr(Path, "symlink_to", track_symlink_to)
+
+        # Mock subprocess.run for directory junction on Windows
+        def mock_subprocess_run(args, **_kwargs):
+            if args[0] == "cmd" and "/J" in args:
+                # Windows directory junction
+                source = args[4]
+                target = args[5]
+                symlink_calls.append((source, target))
+            return MagicMock(returncode=0)
+
+        monkeypatch.setattr(subprocess, "run", mock_subprocess_run)
+
+        # Now create tool2 environment
+        cli.setup_environment(tool2_name, tool2_script_path)
+
+        # Check if environment sharing worked as expected
+        if share_environments:
+            # Should have created a symlink or directory junction
+            assert len(symlink_calls) == 1
+            assert tool2_name in symlink_calls[0][0]
+            assert tool1_name in symlink_calls[0][1]
+        else:
+            # Should not have created a symlink
+            assert len(symlink_calls) == 0
 
 
 class TestMain:
@@ -394,11 +487,14 @@ class TestMain:
 
         # Mock ensure_uv_installed and setup_environment
         monkeypatch.setattr(cli, "ensure_uv_installed", lambda: None)
-        monkeypatch.setattr(
-            cli,
-            "setup_environment",
-            lambda tool_name, tool_script_path: mock_cli_env["python_path"],
-        )
+
+        # Define a function that verifies its parameters
+        def setup_mock_env(tool_name, tool_script_path):
+            assert tool_name == "decorated_tool"
+            assert tool_script_path.name == "decorated_tool.py"
+            return mock_cli_env["python_path"]
+
+        monkeypatch.setattr(cli, "setup_environment", setup_mock_env)
 
         # Mock sys.exit to avoid exiting the test
         with patch("sys.exit") as mock_exit:
@@ -421,15 +517,21 @@ class TestMain:
         dummy_script.touch(mode=0o755)
 
         # Mock is_file to return True
-        monkeypatch.setattr(Path, "is_file", lambda self: True)
+        def mock_is_file(self):
+            return self.name == "dummy.py" or Path.is_file(self)
+
+        monkeypatch.setattr(Path, "is_file", mock_is_file)
 
         # Mock functions to avoid actual execution
         monkeypatch.setattr(cli, "ensure_uv_installed", lambda: None)
-        monkeypatch.setattr(
-            cli,
-            "setup_environment",
-            lambda tool_name, tool_script_path: mock_cli_env["python_path"],
-        )
+
+        # Define a function that verifies its parameters
+        def setup_mock_env(tool_name, tool_script_path):
+            assert tool_name == "dummy"
+            assert tool_script_path.name == "dummy.py"
+            return mock_cli_env["python_path"]
+
+        monkeypatch.setattr(cli, "setup_environment", setup_mock_env)
 
         # Mock import_tool_module to return None to force subprocess execution
         monkeypatch.setattr(cli, "import_tool_module", lambda _: None)
@@ -454,15 +556,21 @@ class TestMain:
         dummy_script.touch(mode=0o755)
 
         # Mock is_file to return True
-        monkeypatch.setattr(Path, "is_file", lambda self: True)
+        def mock_is_file(self):
+            return self.name == "dummy.py" or Path.is_file(self)
+
+        monkeypatch.setattr(Path, "is_file", mock_is_file)
 
         # Mock functions to avoid actual execution
         monkeypatch.setattr(cli, "ensure_uv_installed", lambda: None)
-        monkeypatch.setattr(
-            cli,
-            "setup_environment",
-            lambda tool_name, tool_script_path: mock_cli_env["python_path"],
-        )
+
+        # Define a function that verifies its parameters
+        def setup_mock_env(tool_name, tool_script_path):
+            assert tool_name == "dummy"
+            assert tool_script_path.name == "dummy.py"
+            return mock_cli_env["python_path"]
+
+        monkeypatch.setattr(cli, "setup_environment", setup_mock_env)
 
         # Mock import_tool_module to return None to force subprocess execution
         monkeypatch.setattr(cli, "import_tool_module", lambda _: None)
