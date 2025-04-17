@@ -28,9 +28,10 @@ def mock_which(monkeypatch):
 class TestEnsureUvInstalled:
     """Tests for the ensure_uv_installed function."""
 
-    def test_uv_installed(self, mock_which, capsys):
+    @pytest.mark.usefixtures("_mock_which")
+    def test_uv_installed(self, capsys):
         """Test that function passes when uv is installed."""
-        # The _mock_which fixture patches shutil.which implicitly.
+        # The mock_which fixture patches shutil.which implicitly.
         with patch("sys.exit") as mock_exit:
             cli.ensure_uv_installed()
             mock_exit.assert_not_called()
@@ -78,10 +79,12 @@ class TestImportToolModule:
         """Test successful module import."""
         # Create a mock tool script
         tool_script = tmp_path / "mock_tool.py"
-        tool_script.write_text("""
+        tool_script.write_text(
+            """
 def main():
     return 0
-        """)
+        """
+        )
 
         # Import the module
         module = cli.import_tool_module(tool_script)

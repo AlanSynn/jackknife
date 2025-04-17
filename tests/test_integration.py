@@ -340,7 +340,8 @@ class TestRealExecution:
 
         # Create test script
         test_main = tmp_path / "test_main.py"
-        test_main.write_text("""
+        test_main.write_text(
+            """
 import sys
 from pathlib import Path
 import os
@@ -353,7 +354,8 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-        """)
+        """
+        )
 
         # Set up environment variables
         env_vars = os.environ.copy()
@@ -383,7 +385,8 @@ if __name__ == "__main__":
 
         # Create test script with decorated tool
         test_main = tmp_path / "test_main.py"
-        test_main.write_text("""
+        test_main.write_text(
+            """
 import sys
 from pathlib import Path
 import os
@@ -416,7 +419,8 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-        """)
+        """
+        )
 
         # Set up environment variables
         env_vars = os.environ.copy()
