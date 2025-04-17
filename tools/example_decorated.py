@@ -13,7 +13,9 @@ from jackknife.tool_helpers import argument, tool
 def example_decorated(
     input_file: argument(help_text="Path to the input file to process"),
     output_file: argument(help_text="Path to save the output", required=False) = None,
-    verbose: argument(flag=True, help_text="Enable verbose output", short_name="v") = False,
+    verbose: argument(
+        flag=True, help_text="Enable verbose output", short_name="v"
+    ) = False,
     mode: argument(
         help_text="Processing mode", choices=["fast", "normal", "thorough"]
     ) = "normal",

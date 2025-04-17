@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 Manages GitMCP server entries in the Cursor configuration file (~/.cursor/mcp.json).
@@ -10,13 +9,12 @@ Handles various URL formats and automatically generates names if not provided.
 
 import json
 import logging
-import os
 import re
-import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import typer
+
 
 # Configure logging
 logging.basicConfig(
@@ -35,7 +33,7 @@ app = typer.Typer(
         "  python mcpm.py add gitmcp.io/docs\n"
         "  python mcpm.py list\n"
         "  python mcpm.py remove my-repo"
-    )
+    ),
 )
 
 
@@ -51,26 +49,23 @@ def _load_mcp_config() -> Dict[str, Any]:
         typer.Exit: If there's an error reading or creating the file, or if JSON is invalid.
     """
     if not MCP_CONFIG_PATH.exists():
-        logging.info(
-            f"Configuration file not found at {MCP_CONFIG_PATH}. Creating it."
-        )
+        logging.info(f"Configuration file not found at {MCP_CONFIG_PATH}. Creating it.")
         try:
             MCP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
             default_config = {"mcpServers": {}}
             with open(MCP_CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(default_config, f, indent=2)
+        except OSError as e:
+            logging.exception("Failed to create configuration file:")
+            raise typer.Exit(code=1) from e
+        else:
             logging.info(f"Created default configuration file: {MCP_CONFIG_PATH}")
             return default_config
-        except OSError as e:
-            logging.error(f"Failed to create configuration file: {e}")
-            raise typer.Exit(code=1)
     try:
-        with open(MCP_CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(MCP_CONFIG_PATH, encoding="utf-8") as f:
             config = json.load(f)
             # Ensure the basic structure exists
-            if "mcpServers" not in config or not isinstance(
-                config["mcpServers"], dict
-            ):
+            if "mcpServers" not in config or not isinstance(config["mcpServers"], dict):
                 logging.warning(
                     "MCP configuration file is missing 'mcpServers' dictionary."
                     " Initializing it."
@@ -78,11 +73,11 @@ def _load_mcp_config() -> Dict[str, Any]:
                 config["mcpServers"] = {}
             return config
     except json.JSONDecodeError as e:
-        logging.error(f"Error decoding JSON from {MCP_CONFIG_PATH}: {e}")
-        raise typer.Exit(code=1)
+        logging.exception(f"Error decoding JSON from {MCP_CONFIG_PATH}:")
+        raise typer.Exit(code=1) from e
     except OSError as e:
-        logging.error(f"Error reading configuration file {MCP_CONFIG_PATH}: {e}")
-        raise typer.Exit(code=1)
+        logging.exception(f"Error reading configuration file {MCP_CONFIG_PATH}:")
+        raise typer.Exit(code=1) from e
 
 
 def _save_mcp_config(config: Dict[str, Any]) -> None:
@@ -100,8 +95,8 @@ def _save_mcp_config(config: Dict[str, Any]) -> None:
             json.dump(config, f, indent=2)
         logging.debug(f"Configuration saved to {MCP_CONFIG_PATH}")
     except OSError as e:
-        logging.error(f"Error writing configuration file {MCP_CONFIG_PATH}: {e}")
-        raise typer.Exit(code=1)
+        logging.exception(f"Error writing configuration file {MCP_CONFIG_PATH}:")
+        raise typer.Exit(code=1) from e
 
 
 def _normalize_gitmcp_url(input_url: str) -> Tuple[Optional[str], Optional[str]]:
@@ -193,7 +188,7 @@ def add_server(
 
     try:
         config = _load_mcp_config()
-        servers = config.get("mcpServers", {}) # Use .get for safety
+        servers = config.get("mcpServers", {})  # Use .get for safety
         if server_name in servers:
             logging.warning(
                 f"Server name '{server_name}' already exists."
@@ -207,20 +202,19 @@ def add_server(
         config["mcpServers"][server_name] = server_entry
         _save_mcp_config(config)
         logging.info(
-            f"Successfully added server '{server_name}' with URL:"
-            f" {normalized_url}"
+            f"Successfully added server '{server_name}' with URL: {normalized_url}"
         )
     except typer.Exit:
         # Propagate exit signals from load/save functions
         raise
     except Exception as e:
-        logging.exception(f"Failed to add server: {e}", exc_info=True)
-        raise typer.Exit(code=1)
+        logging.exception("Failed to add server:")
+        raise typer.Exit(code=1) from e
 
 
 @app.command("remove")
 def remove_server(
-    name: str = typer.Argument(..., help="The name of the server entry to remove.")
+    name: str = typer.Argument(..., help="The name of the server entry to remove."),
 ) -> None:
     """Removes a GitMCP server entry from the configuration by name."""
     try:
@@ -233,13 +227,13 @@ def remove_server(
             logging.info(f"Successfully removed server '{name}'.")
         else:
             logging.warning(f"Server name '{name}' not found.")
-            raise typer.Exit(code=1) # Exit if not found
+            raise typer.Exit(code=1)  # Exit if not found # noqa: TRY301
     except typer.Exit:
         # Propagate exit signals from load/save functions or not found
         raise
     except Exception as e:
-        logging.exception(f"Failed to remove server: {e}", exc_info=True)
-        raise typer.Exit(code=1)
+        logging.exception("Failed to remove server:")
+        raise typer.Exit(code=1) from e
 
 
 @app.command("list")
@@ -250,7 +244,7 @@ def list_servers() -> None:
         servers = config.get("mcpServers", {})
         if not servers:
             logging.info("No GitMCP servers configured.")
-            typer.echo("No GitMCP servers configured.") # Use typer.echo for output
+            typer.echo("No GitMCP servers configured.")  # Use typer.echo for output
             return
 
         typer.echo("Configured GitMCP Servers:")
@@ -264,8 +258,8 @@ def list_servers() -> None:
         # Propagate exit signals from load function
         raise
     except Exception as e:
-        logging.exception(f"Failed to list servers: {e}", exc_info=True)
-        raise typer.Exit(code=1)
+        logging.exception("Failed to list servers:")
+        raise typer.Exit(code=1) from e
 
 
 if __name__ == "__main__":

@@ -77,7 +77,7 @@ def _validate_input_output_paths(input_path: str, output_path: str) -> None:
         sys.exit(1)
 
     # Check if input file is a GIF
-    if not input_path.lower().endswith('.gif'):
+    if not input_path.lower().endswith(".gif"):
         print("Error: Input file must be a GIF file")
         sys.exit(1)
 
@@ -88,10 +88,10 @@ def _validate_input_output_paths(input_path: str, output_path: str) -> None:
         sys.exit(1)
 
     # Check if output is MP4
-    if not output_path.lower().endswith('.mp4'):
+    if not output_path.lower().endswith(".mp4"):
         print("Warning: Output file should have .mp4 extension")
-        if '.' not in os.path.basename(output_path):
-            output_path += '.mp4'
+        if "." not in os.path.basename(output_path):
+            output_path += ".mp4"
             print(f"Output path adjusted to: {output_path}")
 
 
@@ -109,6 +109,7 @@ def _import_required_libraries() -> dict:
         return None
     else:
         return {"np": np, "Image": Image, "cv2": cv2}
+
 
 def _process_gif_frames(input_path: str, fps: int, libs: dict) -> tuple:
     """Process GIF frames and convert to format suitable for video."""
@@ -148,7 +149,7 @@ def _process_gif_frames(input_path: str, fps: int, libs: dict) -> tuple:
 
             for frame_idx in range(frame_count):
                 gif.seek(frame_idx)
-                frame = gif.convert('RGB')
+                frame = gif.convert("RGB")
 
                 # Convert PIL Image to OpenCV format (numpy array)
                 frame_np = np.array(frame)
@@ -158,7 +159,6 @@ def _process_gif_frames(input_path: str, fps: int, libs: dict) -> tuple:
 
                 frames.append(frame_cv)
                 progress.update(task, advance=1)
-
 
     except Exception as e:
         print(f"Error processing GIF: {e}")
@@ -176,7 +176,7 @@ def _write_output_video(frames: list, output_path: str, fps: int, libs: dict) ->
         height, width, _ = frames[0].shape
 
         # Create VideoWriter
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # Codec for MP4
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
         # Write frames to video
