@@ -1,0 +1,21 @@
+Guide to creating tools for Jackknife, a Python utility that runs scripts in isolated environments managed by uv.
+
+Key Concepts:
+- Tools are Python scripts placed in the `tools/` directory (e.g., `tools/my_tool.py`).
+- Dependencies are listed in a corresponding `tools/my_tool.requirements.txt` file.
+- Jackknife runs tools either via direct import (if using the `@tool` decorator without conflicting dependencies) or as a subprocess (standard scripts or decorated scripts with dependencies).
+
+Creating Tools:
+1. Recommended Method: Use `@jackknife.tool_helpers.tool` decorator on a function. Use `@jackknife.tool_helpers.argument` to define arguments (maps to argparse). Return an exit code.
+2. Traditional Method: Standard Python script using `argparse` or similar, with an `if __name__ == "__main__":` block calling `sys.exit(main())`.
+
+Dependencies:
+- Create `tool_name.requirements.txt` next to `tool_name.py`.
+- List one dependency per line. Pin versions (e.g., `requests==2.31.0`).
+
+Best Practices:
+- Use `rich` for console output (add to requirements).
+- Handle `KeyboardInterrupt`.
+- Return exit code 0 for success, non-zero for errors.
+- Use `typer` for complex CLIs if not using `@tool`.
+- Test locally using `jackknife activate my_tool` to enter the venv.

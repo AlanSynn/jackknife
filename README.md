@@ -61,63 +61,68 @@ Jackknife is a command-line utility that allows you to run various Python tool s
 
 ## Usage
 
-Run tools using the following format:
+Jackknife now uses subcommands to organize its functionality:
+
+### Running Tools (`run` command)
+
+To run a single tool or a chain of tools, use the `run` subcommand:
 
 ```bash
-jackknife <tool_name> [tool_arguments...]
+jackknife run <tool_name | tool_chain> [tool_arguments...]
 ```
 
-- `<tool_name>`: The name of the tool script (without the `.py` extension) in the `tools/` directory
-- `[tool_arguments...]`: Any arguments you want to pass directly to the tool script
+- `<tool_name>`: The name of the tool script (without the `.py` extension) in the `tools/` directory.
+- `<tool_chain>`: A comma-separated list of tool names, optionally with arguments in brackets (see below).
+- `[tool_arguments...]`: Any arguments you want to pass directly to the tool script (only applies when running a single tool).
 
-### Example
+#### Example (Single Tool)
 
 Using the included `giftomp4` tool:
 
 ```bash
 # Show help for the giftomp4 tool
-jackknife giftomp4 --help
+jackknife run giftomp4 --help
 
 # Convert a GIF to MP4
-jackknife giftomp4 my_animation.gif -o my_video.mp4 --fps 24 --verbose
+jackknife run giftomp4 my_animation.gif -o my_video.mp4 --fps 24 --verbose
 ```
 
-### Cascading Tool Execution
+#### Example (Tool Chain)
 
-You can run multiple tools in sequence with a single command:
+You can run multiple tools in sequence:
 
 ```bash
 # Run multiple tools in sequence
-jackknife tool1,tool2,tool3
+jackknife run tool1,tool2,tool3
 
 # Stop on first error (default behavior)
-jackknife tool1,tool2,tool3
+jackknife run tool1,tool2,tool3
 
 # Continue even if a tool fails
-jackknife tool1,tool2,tool3 --continue-on-error
+jackknife run tool1,tool2,tool3 --continue-on-error
 ```
 
-#### Tool-Specific Arguments
+##### Tool-Specific Arguments in Chains
 
-You can provide arguments for each tool using square brackets:
+You can provide arguments for each tool in a chain using square brackets:
 
 ```bash
 # Run tools with their own arguments
-jackknife "tool1[--option value],tool2[arg1 arg2],tool3[--flag]"
+jackknife run "tool1[--option value],tool2[arg1 arg2],tool3[--flag]"
 ```
 
-> **Note**: When using tool-specific arguments, you need to quote the entire command in most shells to prevent the brackets from being interpreted by the shell.
+> **Note**: When using tool-specific arguments in chains, you often need to quote the entire tool chain string to prevent the brackets from being interpreted by your shell.
 
-### Environment Sharing
+#### Environment Sharing
 
-Jackknife can optimize disk space usage by reusing compatible environments:
+Environment sharing options are part of the `run` command:
 
 ```bash
-# Enable environment sharing (default)
-jackknife mytool
+# Run with environment sharing (default)
+jackknife run mytool
 
-# Disable environment sharing
-jackknife --no-share-environments mytool
+# Run without environment sharing
+jackknife run --no-share-environments mytool
 ```
 
 You can also control this behavior globally with an environment variable:
@@ -125,94 +130,86 @@ You can also control this behavior globally with an environment variable:
 ```bash
 # Disable environment sharing globally
 export JACKKNIFE_SHARE_ENVIRONMENTS=false
-jackknife mytool
+jackknife run mytool
 
 # Enable environment sharing globally
 export JACKKNIFE_SHARE_ENVIRONMENTS=true
-jackknife mytool
+jackknife run mytool
 ```
 
-When environment sharing is enabled, Jackknife will:
-1. Check if a tool's requirements are a subset of an existing environment
-2. If found, create a symlink to the existing environment instead of a new one
-3. Use the shared environment for running the tool
+### Activating a Tool's Environment (`activate` command)
 
-This is particularly useful when you have many tools with overlapping dependencies.
+Sometimes, you might want to manually work within a tool's isolated environment (e.g., to use its specific Python interpreter or installed packages directly). The `activate` command helps with this:
+
+```bash
+jackknife activate <tool_name>
+```
+
+This command prints the necessary shell command to activate the tool's virtual environment. **It does not activate the environment itself.**
+
+#### Example (macOS/Linux - bash/zsh)
+
+```bash
+# Print the activation command for the 'cinit' tool's environment
+jackknife activate cinit
+
+# To actually activate it, use eval:
+eval $(jackknife activate cinit)
+
+# Now your shell is using the cinit environment
+(cinit) $ python --version
+(cinit) $ which python
+# .../.jackknife_envs/cinit/bin/python
+
+# Deactivate when done
+(cinit) $ deactivate
+$
+```
+
+#### Example (Windows - Command Prompt)
+
+```batch
+:: Print the activation command path
+jackknife activate cinit
+
+:: You would typically run the printed .bat script directly
+C:\Users\You\.jackknife_envs\cinit\Scripts\activate.bat
+
+(cinit) C:\Your\Project> REM Now in the tool's environment
+```
+
+> **Note:** The `activate` command only works if the tool has been run at least once with `jackknife run <tool_name>` to create its environment.
 
 ## How It Works
 
-1. When you run `jackknife giftomp4 ...`, the script finds `tools/giftomp4.py`
-2. It checks for a corresponding virtual environment in `~/.jackknife_envs/giftomp4`
-3. If needed, it creates the environment and installs required dependencies
-4. It executes the tool with your arguments using the isolated Python interpreter
+1. When you run `jackknife run giftomp4 ...`, the script finds `tools/giftomp4.py`.
+2. It checks for a corresponding virtual environment in `~/.jackknife_envs/giftomp4`.
+3. If needed (and not using a shared environment), it creates the environment and installs dependencies from `tools/giftomp4.requirements.txt` using `uv`.
+4. It executes the tool script with your arguments using the isolated Python interpreter from the environment.
 
 ## Adding New Tools
 
-There are two ways to create tools for Jackknife:
+Adding new tools to Jackknife is straightforward. You can either write a standard Python script or use the provided helper decorators for easier argument parsing.
+
+For detailed instructions and examples, please see the dedicated guide:
+
+**➡️ [docs/creating-tools.md](./docs/creating-tools.md)**
+
+Here's a quick summary of the two approaches:
 
 ### 1. Using the Tool Decorator (Recommended)
 
-The easiest way to create a tool is to use the `@tool` decorator, which automatically handles argument parsing for you:
-
-```python
-#!/usr/bin/env python3
-"""Example tool using the Jackknife decorator system."""
-
-from jackknife.tool_helpers import tool, argument
-
-@tool
-def my_tool(
-    input_file: argument(help="Path to the input file to process"),
-    output_file: argument(help="Path to save the output", required=False) = None,
-    verbose: argument(flag=True, help="Enable verbose output", short_name="v") = False,
-    count: argument(help="Number of items to process", type=int) = 1,
-):
-    """My awesome tool that does something useful."""
-    # Your tool implementation here
-    if verbose:
-        print(f"Processing {input_file} with count={count}")
-
-    # Do something with the input file
-
-    if output_file:
-        print(f"Writing output to {output_file}")
-
-    return 0  # Return an exit code
-```
+Leverage `@tool` and `@argument` from `jackknife.tool_helpers` for automatic argument parsing. See `tools/example_decorated.py` and the guide for details.
 
 ### 2. Traditional Script Approach
 
-You can also create tools as traditional Python scripts with their own argument parsing:
+Write a standard script using `argparse`, `typer`, or similar. Ensure it has an `if __name__ == "__main__":` block and uses `sys.exit()`. See `tools/example_traditional.py` and the guide for details.
 
-```python
-#!/usr/bin/env python3
-"""Example tool using traditional argparse."""
+**Key Steps:**
 
-import argparse
-import sys
-
-def main():
-    parser = argparse.ArgumentParser(description="My awesome tool")
-    parser.add_argument("input_file", help="Path to the input file")
-    parser.add_argument("--output-file", "-o", help="Output file path")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
-    parser.add_argument("--count", "-c", type=int, default=1, help="Number of items to process")
-
-    args = parser.parse_args()
-
-    # Your tool implementation here
-
-    return 0
-
-if __name__ == "__main__":
-    sys.exit(main())
-```
-
-### Both approaches work with jackknife:
-
-1. Create your Python script (e.g., `mytool.py`) inside the `tools/` directory
-2. If your tool has dependencies, list them in `mytool.requirements.txt` in the same directory
-3. Run it: `jackknife mytool [arguments...]`
+1. Place your Python script (e.g., `mytool.py`) inside the `tools/` directory.
+2. If your tool has dependencies, list them in `mytool.requirements.txt` in the same directory.
+3. Run it: `jackknife run mytool [arguments...]`
 
 ## Environment Location
 
@@ -220,10 +217,10 @@ By default, environments are stored in `~/.jackknife_envs/`. You can change this
 
 ```bash
 export JACKKNIFE_ENVS_DIR=/path/to/your/envs
-jackknife giftomp4 input.gif
+jackknife run giftomp4 input.gif
 ```
 
-Jackknife will create separate environments for each tool, or reuse compatible environments if sharing is enabled.
+Jackknife will create separate environments for each tool, or reuse compatible environments if sharing is enabled. Use `jackknife activate <tool_name>` to get the command for entering a specific tool's environment manually.
 
 ## Code Quality
 
@@ -306,6 +303,7 @@ Current test coverage: **91%**
 - [x] Add pre-commit hooks
 - [x] Add cascading tool execution
 - [x] Add environment sharing for compatible tools
+- [x] Add `activate` command to get venv source string
 - [ ] Add tool discovery plugins
 - [ ] Add caching for faster startup
 - [ ] Add shared environment option
