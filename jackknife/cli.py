@@ -5,8 +5,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set, Tuple
 from types import ModuleType
+from typing import Callable, Dict, List, Optional, Set, Tuple
+
+import typer
 
 # Import Rich for better terminal output
 from rich.console import Console
@@ -231,6 +233,134 @@ def find_compatible_environment(
     return None
 
 
+# --- Environment Setup Helpers ---
+
+def _link_to_compatible_environment(env_path: Path, compatible_env: Path, tool_name: str) -> None:
+    """Creates a symlink or junction to a compatible environment."""
+    console.print(
+        f"Using compatible environment from [highlight]'{compatible_env.name}'[/] for [highlight]'{tool_name}'[/]"
+    )
+    try:
+        # Ensure the parent directory exists
+        ENVS_DIR.mkdir(parents=True, exist_ok=True)
+        cmd_path = "cmd"
+
+        if os.name == "nt":  # Windows
+            subprocess.run( # noqa: S603
+                [cmd_path, "/c", "mklink", "/J", str(env_path), str(compatible_env)],
+                check=True,
+                capture_output=True,
+            )
+        else:  # Unix/Mac
+            env_path.symlink_to(compatible_env, target_is_directory=True)
+    except (OSError, subprocess.CalledProcessError) as e:
+        console_stderr.print(
+            f"[error]Error linking to compatible environment for '{tool_name}':[/] {e}"
+        )
+        # If linking fails, we should probably fall back to creating a new env,
+        # but for simplicity now, we exit.
+        # Alternatively, re-raise the error for setup_environment to handle.
+        raise typer.Exit(code=1) from e
+
+def _create_new_environment(env_path: Path, tool_name: str) -> None:
+    """Creates a new virtual environment using uv."""
+    console.print(
+        f"Creating virtual environment for [highlight]'{tool_name}'[/] in {env_path}..."
+    )
+    ENVS_DIR.mkdir(parents=True, exist_ok=True)
+    uv_path = shutil.which("uv")
+    if not uv_path:
+        console_stderr.print("[error]Error:[/] 'uv' command not found during environment creation.")
+        raise typer.Exit(code=1)
+
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task(f"Creating venv for {tool_name}...", total=None)
+            result = subprocess.run( # noqa: S603
+                [uv_path, "venv", str(env_path)], check=False, capture_output=True, text=True
+            )
+            result.check_returncode() # Raise CalledProcessError if failed
+            progress.update(task, completed=True)
+        console.print(f"[success]Virtual environment created for '{tool_name}'.[/]")
+    except FileNotFoundError as e: # Should be caught by shutil.which earlier, but defensive
+        console_stderr.print("[error]Error:[/] 'uv' command not found.")
+        raise typer.Exit(code=1) from e
+    except subprocess.CalledProcessError as e:
+        console_stderr.print(f"[error]Error creating venv for '{tool_name}':[/]")
+        console_stderr.print(f"Command: {' '.join(e.cmd)}")
+        console_stderr.print(f"Output:\n{e.stderr or e.stdout}") # Show error output
+        raise typer.Exit(code=1) from e
+
+def _install_dependencies(python_executable: Path, requirements_path: Path, tool_name: str) -> None:
+    """Installs dependencies from a requirements file into the environment."""
+    if not requirements_path.exists():
+        console.print(f"[info]No requirements file found for '{tool_name}'.[/]")
+        return
+
+    uv_path = shutil.which("uv")
+    if not uv_path:
+        console_stderr.print("[error]Error:[/] 'uv' command not found during dependency installation.")
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"Found requirements: [info]{requirements_path.name}[/]. Installing for '{tool_name}'..."
+    )
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task(f"Installing dependencies for {tool_name}...", total=None)
+            install_result = subprocess.run( # noqa: S603
+                [
+                    uv_path,
+                    "pip",
+                    "install",
+                    "--python",
+                    str(python_executable),
+                    "-r",
+                    str(requirements_path),
+                    "--no-input", # Add no-input flag
+                ],
+                check=False, # Check manually below
+                capture_output=True,
+                text=True,
+            )
+
+            # --- Debug: Print uv output ---
+            if install_result.stdout and install_result.returncode != 0:
+                console.print("[dim]uv stdout:[/]")
+                console.print(f"[dim]{install_result.stdout.strip()}[/]")
+            if install_result.stderr:
+                console.print("[dim yellow]uv stderr:[/]")
+                console.print(f"[dim yellow]{install_result.stderr.strip()}[/]")
+            # --- End Debug ---
+
+            install_result.check_returncode() # Raise CalledProcessError if failed
+            progress.update(task, completed=True)
+
+        console.print(f"[success]Dependencies installed for '{tool_name}'.[/]")
+        # Invalidate package cache for this environment
+        _environment_packages.pop(str(python_executable), None)
+
+    except FileNotFoundError as e:
+        console_stderr.print("[error]Error:[/] 'uv' command not found.")
+        raise typer.Exit(code=1) from e
+    except subprocess.CalledProcessError as e:
+        console_stderr.print(f"[error]Error installing dependencies for '{tool_name}':[/]")
+        console_stderr.print(f"Command: {' '.join(e.cmd)}")
+        # Show stderr first if available, otherwise stdout
+        output = e.stderr or e.stdout
+        console_stderr.print(f"Output:\n{output.strip()}")
+        raise typer.Exit(code=1) from e
+
 def setup_environment(tool_name: str, tool_script_path: Path) -> Path:
     """
     Ensures the virtual environment for the tool exists and dependencies are installed.
@@ -240,131 +370,50 @@ def setup_environment(tool_name: str, tool_script_path: Path) -> Path:
     python_executable = get_python_executable(env_path)
     requirements_path = tool_script_path.with_suffix(".requirements.txt")
 
-    # Check if environment already exists
-    if python_executable.exists():
+    # 1. Check if environment already exists and seems valid
+    if python_executable.is_file(): # More robust check than just exists()
+        # Optional: Add a check here to verify if required packages are installed?
+        # For now, assume existing env is okay.
         return python_executable
 
-    # If sharing is enabled, look for a compatible environment
+    # 2. Try linking to a compatible environment if sharing is enabled
     compatible_env = find_compatible_environment(tool_name, requirements_path)
     if compatible_env:
-        # Create a symlink or directory junction to the compatible environment
-        console.print(
-            f"Using compatible environment from [highlight]'{compatible_env.name}'[/] for [highlight]'{tool_name}'[/]"
-        )
+        try:
+            _link_to_compatible_environment(env_path, compatible_env, tool_name)
+            # If linking succeeds, return the python executable from the *linked* path
+            return get_python_executable(env_path)
+        except Exception:
+             # If linking fails, proceed to create a new environment
+             console.print(f"[warning]Linking failed, creating dedicated environment for {tool_name}...[/]")
 
-        # Ensure the parent directory exists
-        ENVS_DIR.mkdir(parents=True, exist_ok=True)
-
-        cmd_path = "cmd"
-
-        # Different approach based on OS
-        if os.name == "nt":  # Windows
-            # Use directory junction
-            subprocess.run( # noqa: S603
-                [cmd_path, "/c", "mklink", "/J", str(env_path), str(compatible_env)],
-                check=True,
-                capture_output=True,
-            )
-        else:  # Unix/Mac
-            # Use symlink
-            env_path.symlink_to(compatible_env, target_is_directory=True)
-
-        return get_python_executable(env_path)
-
-    # Otherwise, create a new environment
-    console.print(
-        f"Creating virtual environment for [highlight]'{tool_name}'[/] in {env_path}..."
-    )
-    ENVS_DIR.mkdir(parents=True, exist_ok=True)  # Ensure base dir exists
-
-    uv_path = shutil.which("uv")
-    if not uv_path:
-        console_stderr.print(
-            "[error]Error:[/] 'uv' command not found during environment creation."
-        )
-        console_stderr.print("[info]Make sure 'uv' is installed and in your PATH.[/]")
-        sys.exit(1)
-
+    # 3. Create a new environment
     try:
-        # Use uv to create the venv with a progress spinner
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-            transient=True,
-        ) as progress:
-            task = progress.add_task("Creating environment...", total=None)
-            subprocess.run( # noqa: S603
-                [uv_path, "venv", str(env_path)], check=True, capture_output=True
-            )
-            progress.update(task, completed=True)
-
-        console.print("[success]Virtual environment created.[/]")
-
-        # Check for and install requirements if they exist
-        if requirements_path.exists():
-            uv_path = shutil.which("uv")
-            if not uv_path:
-                console_stderr.print(
-                    "[error]Error:[/] 'uv' command not found during environment creation."
-                )
-                console_stderr.print("[info]Make sure 'uv' is installed and in your PATH.[/]")
-                sys.exit(1)
-            console.print(
-                f"Found requirements: [info]{requirements_path.name}[/]. Installing..."
-            )
-
-            # Use uv pip install with a progress spinner
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-                transient=True,
-            ) as progress:
-                task = progress.add_task("Installing dependencies...", total=None)
-                subprocess.run( # noqa: S603
-                    [
-                        uv_path,
-                        "pip",
-                        "install",
-                        "--python",
-                        str(python_executable),
-                        "-r",
-                        str(requirements_path),
-                    ],
-                    check=True,
-                    capture_output=True,
-                )
-                progress.update(task, completed=True)
-
-            console.print("[success]Dependencies installed.[/]")
-
-            # Update the package cache
-            _environment_packages.pop(str(python_executable), None)
-
-        else:
-            console.print("[info]No requirements file found.[/]")
-
-    except FileNotFoundError:
-        console_stderr.print(
-            "[error]Error:[/] 'uv' command not found during environment creation."
-        )
-        console_stderr.print("[info]Make sure 'uv' is installed and in your PATH.[/]")
-        sys.exit(1)
-    except subprocess.CalledProcessError as e:
-        console_stderr.print(
-            f"[error]Error setting up environment for '{tool_name}':[/]"
-        )
-        console_stderr.print(f"Command: {' '.join(e.cmd)}")
-        console_stderr.print(f"Return Code: {e.returncode}")
-        console_stderr.print(f"Output:\n{e.stdout.decode()}")
-        console_stderr.print(f"Error Output:\n{e.stderr.decode()}")
-        sys.exit(1)
+        _create_new_environment(env_path, tool_name)
+    except typer.Exit:
+         raise # Propagate exit
     except Exception as e:
-        console_stderr.print(
-            f"[error]An unexpected error occurred during environment setup:[/] {e}"
-        )
-        sys.exit(1)
+         # Catch unexpected errors during creation
+         console_stderr.print(f"[error]Unexpected error during environment creation: {e}[/]")
+         raise typer.Exit(code=1) from e
+
+    # 4. Install dependencies into the newly created environment
+    try:
+        _install_dependencies(python_executable, requirements_path, tool_name)
+    except typer.Exit:
+         raise # Propagate exit
+    except Exception as e:
+         # Catch unexpected errors during installation
+         console_stderr.print(f"[error]Unexpected error during dependency installation: {e}[/]")
+         # Consider removing the partially created env?
+         shutil.rmtree(env_path, ignore_errors=True)
+         raise typer.Exit(code=1) from e
+
+    # 5. Return the path to the python executable in the new env
+    if not python_executable.is_file():
+         # Final sanity check
+         console_stderr.print(f"[error]Environment setup finished, but Python executable not found at {python_executable}[/]")
+         raise typer.Exit(code=1)
 
     return python_executable
 
