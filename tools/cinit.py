@@ -39,9 +39,8 @@ def _get_console(): # --> Console # noqa: F821 ANN202
 @functools.lru_cache(maxsize=1)
 def _get_console_stderr(): # --> Console # noqa: F821 ANN202
     """Lazy load rich stderr console."""
-    import questionary  # Needed for theme
     from rich.console import Console
-    console_stderr = Console(stderr=True, theme=questionary.themes.THEME)
+    console_stderr = Console(stderr=True)
     return console_stderr
 
 
@@ -88,7 +87,7 @@ def _create_symlink(rule_name: str, source_dir: Path, dest_dir: Path) -> bool:
 
 
 @app.command("link")
-def link_rules() -> None:
+def link_rules() -> None: # noqa: C901 PLR0912
     """Interactively select and symlink rules from ~/.cursor/rules/ to the current directory."""
     # Import required libraries here
     import questionary
@@ -96,16 +95,34 @@ def link_rules() -> None:
     console = _get_console()
     console_stderr = _get_console_stderr()
 
+    target_link_dir = TARGET_DIR / ".cursor" / "rules" # Define specific target subdir
+
     console.print("[bold cyan]Link Cursor Rules[/]")
     console.print(f"Source directory: [dim]{RULES_SOURCE_DIR}[/]")
-    console.print(f"Target directory: [dim]{TARGET_DIR}[/]")
+    console.print(f"Target link directory: [dim]{target_link_dir}[/]")
 
+    # Ensure source directory exists, create if not
     if not RULES_SOURCE_DIR.is_dir():
-        console_stderr.print(
-            f"[bold red]Error:[/] Rules source directory not found: {RULES_SOURCE_DIR}"
-        )
-        raise typer.Exit(code=1)
+        console.print(f"[info]Source directory {RULES_SOURCE_DIR} not found. Creating it...[/]")
+        try:
+            RULES_SOURCE_DIR.mkdir(parents=True, exist_ok=True)
+            console.print(f"[success]Created directory: {RULES_SOURCE_DIR}[/]")
+        except OSError as e:
+            console_stderr.print(
+                f"[bold red]Error:[/] Could not create source directory {RULES_SOURCE_DIR}: {e}"
+            )
+            raise typer.Exit(code=1) from e
 
+    # Ensure target link directory exists, create if not
+    try:
+        target_link_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        console_stderr.print(
+            f"[bold red]Error:[/] Could not create target link directory {target_link_dir}: {e}"
+        )
+        raise typer.Exit(code=1) from e
+
+    # List available rules (logic remains the same)
     try:
         available_rules = sorted([item.name for item in RULES_SOURCE_DIR.iterdir()])
     except OSError as e:
@@ -120,14 +137,15 @@ def link_rules() -> None:
         )
         raise typer.Exit()
 
+    # Select rules (logic remains the same)
     try:
         selected_rules = questionary.checkbox(
             "Select rules to link to the current directory:",
             choices=available_rules,
-            qmark=b"?",  # Explicitly encode qmark
+            qmark="?",  # Changed back to string
         ).ask()
     except UnicodeDecodeError:
-        # Fallback if encoding fails (e.g., terminal issue)
+        # Fallback should also use string
         selected_rules = questionary.checkbox(
             "Select rules to link to the current directory:",
             choices=available_rules,
@@ -144,20 +162,20 @@ def link_rules() -> None:
         console.print("[yellow]No rules selected. Exiting.[/]")
         raise typer.Exit()
 
-    console.print(f"\nAttempting to link {len(selected_rules)} selected rules:")
+    console.print(f"\nAttempting to link {len(selected_rules)} selected rules to {target_link_dir}:")
     success_count = 0
     error_count = 0
 
+    # Link selected rules to the target subdir
     for rule_name in selected_rules:
-        if _create_symlink(rule_name, RULES_SOURCE_DIR, TARGET_DIR):
+        if _create_symlink(rule_name, RULES_SOURCE_DIR, target_link_dir):
             success_count += 1
         else:
-            # Note: _create_symlink prints specific errors/skips
-            # We only count actual errors here, not skips
-            dest_path = TARGET_DIR / rule_name
+            dest_path = target_link_dir / rule_name # Check against correct target
             if not (dest_path.exists() or dest_path.is_symlink()):
                 error_count += 1
 
+    # Summary (remains the same conceptually)
     console.print("\n[bold cyan]Link Summary:[/]")
     console.print(f"  Successfully linked: [green]{success_count}[/]")
     # Skipped count is implicitly len(selected_rules) - success_count - error_count
@@ -239,11 +257,13 @@ def add_rule( # noqa: C901 PLR0912
 
     # 4. Ask to create symlink in current directory
     if copy_success or not should_copy:  # Ask even if copy was skipped but file exists
-        if dest_rule_path.exists():  # Ensure source exists before asking to link
+        if dest_rule_path.exists():  # Ensure source rule exists before asking to link
             console.print("")  # Spacer
+            target_link_dir = TARGET_DIR / ".cursor" / "rules" # Define specific target subdir
             try:
+                # Updated confirmation message
                 create_link = questionary.confirm(
-                    f"Create a symlink for '{rule_name}' in the current directory ({TARGET_DIR})?",
+                    f"Create a symlink for '{rule_name}' in ./.cursor/rules/ ({target_link_dir})?",
                     default=True,
                 ).ask()
             except KeyboardInterrupt:
@@ -254,11 +274,22 @@ def add_rule( # noqa: C901 PLR0912
                 raise typer.Exit(code=1) from e
 
             if create_link:
-                console.print(f"Attempting to link '{rule_name}' to {TARGET_DIR}...")
-                if not _create_symlink(rule_name, RULES_SOURCE_DIR, TARGET_DIR):
-                    # Error/skip message printed by helper
-                    console.print("[yellow]Symlink creation skipped or failed.[/]")
-                    # Don't exit with error if only linking failed after successful add/confirmation
+                 # Ensure target link directory exists, create if not
+                try:
+                    target_link_dir.mkdir(parents=True, exist_ok=True)
+                except OSError as e:
+                    console_stderr.print(
+                        f"[bold red]Error:[/] Could not create target link directory {target_link_dir}: {e}"
+                    )
+                    # Don't exit, just report error and skip linking
+                    console.print("[yellow]Symlink creation skipped due to directory error.[/]")
+                else:
+                    # Attempt to link to the target subdir
+                    console.print(f"Attempting to link '{rule_name}' to {target_link_dir}...")
+                    if not _create_symlink(rule_name, RULES_SOURCE_DIR, target_link_dir):
+                        # Error/skip message printed by helper
+                        console.print("[yellow]Symlink creation skipped or failed.[/]")
+                        # Don't exit with error if only linking failed after successful add/confirmation
             else:
                 console.print("[info]Skipping symlink creation.[/]")
         else:
@@ -269,7 +300,7 @@ def add_rule( # noqa: C901 PLR0912
 
 
 @app.command("edit")
-def edit_rule() -> None:
+def edit_rule() -> None: # noqa: C901 PLR0912
     """Select a rule from ~/.cursor/rules/ and open it for editing."""
     # Import required libraries here
     import questionary
@@ -280,11 +311,18 @@ def edit_rule() -> None:
     console.print("[bold cyan]Edit Cursor Rule[/]")
     console.print(f"Rule directory: [dim]{RULES_SOURCE_DIR}[/]")
 
+    # Ensure source directory exists, create if not
     if not RULES_SOURCE_DIR.is_dir():
-        console_stderr.print(
-            f"[bold red]Error:[/] Rules source directory not found: {RULES_SOURCE_DIR}"
-        )
-        raise typer.Exit(code=1)
+        console.print(f"[info]Source directory {RULES_SOURCE_DIR} not found. Creating it...[/]")
+        try:
+            RULES_SOURCE_DIR.mkdir(parents=True, exist_ok=True)
+            console.print(f"[success]Created directory: {RULES_SOURCE_DIR}[/]")
+        except OSError as e:
+            console_stderr.print(
+                f"[bold red]Error:[/] Could not create source directory {RULES_SOURCE_DIR}: {e}"
+            )
+            raise typer.Exit(code=1) from e
+    # Proceed even if directory was just created (it will be empty)
 
     try:
         available_rules = sorted(
@@ -306,10 +344,10 @@ def edit_rule() -> None:
         rule_to_edit = questionary.select(
             "Select a rule file to edit:",
             choices=available_rules,
-            qmark=b"?",  # Explicitly encode qmark
+            qmark="?",  # Changed back to string
         ).ask()
     except UnicodeDecodeError:
-        # Fallback if encoding fails
+        # Fallback should also use string
         rule_to_edit = questionary.select(
             "Select a rule file to edit:",
             choices=available_rules,
