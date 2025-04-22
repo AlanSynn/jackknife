@@ -180,6 +180,40 @@ C:\Users\You\.jackknife_envs\cinit\Scripts\activate.bat
 
 > **Note:** The `activate` command only works if the tool has been run at least once with `jackknife run <tool_name>` to create its environment.
 
+## Included Tools Examples
+
+> **Note:** The first time you run a specific tool, Jackknife needs to create its isolated environment and install dependencies, which might take a few extra seconds. Subsequent runs will be much faster.
+
+Jackknife comes with several useful tools:
+
+-   **`giftomp4`**: Converts animated GIFs to MP4 videos using `ffmpeg` (requires `ffmpeg` to be installed separately).
+    ```bash
+    jackknife run giftomp4 input.gif -o output.mp4 --fps 30
+    ```
+-   **`cinit`**: Manages Cursor rules (link, add, edit) by interacting with `~/.cursor/rules/` and the current directory's `./.cursor/rules/`.
+    ```bash
+    # Interactively link rules from ~/.cursor/rules to ./.cursor/rules
+    jackknife run cinit link
+
+    # Add a new rule file to ~/.cursor/rules and optionally link it
+    jackknife run cinit add path/to/my_rule.mdc
+
+    # Select a rule from ~/.cursor/rules to open in your editor
+    jackknife run cinit edit
+    ```
+-   **`mcpm`**: Manages GitMCP server entries in `~/.cursor/mcp.json`.
+    ```bash
+    jackknife run mcpm list # List configured servers
+    jackknife run mcpm add github.com/owner/repo --name my-repo # Add a server
+    jackknife run mcpm remove my-repo # Remove a server
+    ```
+-   **`piazzad`**: Downloads resources from a Piazza course page (requires manual login via Selenium).
+    ```bash
+    # Example: jackknife run piazzad <piazza_resources_url> <network_id> -o <output_dir>
+    jackknife run piazzad https://piazza.com/class/abc123xyz/resources abc123xyz -o ./course_downloads
+    # Requires you to log in via the opened browser window.
+    ```
+
 ## How It Works
 
 1. When you run `jackknife run giftomp4 ...`, the script finds `tools/giftomp4.py`.
@@ -298,17 +332,20 @@ Current test coverage: **91%**
 
 ## Todo
 
-- [x] Add boilerplate-free tool development with decorators
+- [x] Add boilerplate-free tool development with decorators (`@tool`, `@argument`)
 - [x] Add Ruff for linting and formatting
 - [x] Add pre-commit hooks
-- [x] Add cascading tool execution
-- [x] Add environment sharing for compatible tools
+- [x] Add cascading tool execution (`run tool1,tool2,...`)
+- [x] Add environment sharing for compatible tools (`--no-share-environments`)
 - [x] Add `activate` command to get venv source string
-- [ ] Add tool discovery plugins
-- [ ] Add caching for faster startup
-- [ ] Add shared environment option
-- [ ] Implement tool update command
-- [ ] Add tool versions and dependency locking
+- [x] Add `cinit` tool for Cursor rule management
+- [x] Add `mcpm` tool for MCP server management
+- [x] Add `piazzad` tool for Piazza resource downloading
+- [ ] Add tool discovery plugins (e.g., load tools from other installed packages)
+- [ ] Add caching for environment checks/dependency resolution to speed up startup
+- [ ] Implement tool update command (e.g., `jackknife update mytool` to reinstall dependencies)
+- [ ] Add tool versioning and dependency locking (e.g., using `uv lock`)
+- [ ] Improve error handling and reporting for tool execution failures
 
 ## Contributing
 
