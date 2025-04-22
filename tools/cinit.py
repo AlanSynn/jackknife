@@ -7,6 +7,7 @@ Jackknife tool to manage Cursor rules.
           to the current directory.
 - `add`: Copies a local rule script to ~/.cursor/rules/ and optionally links it.
 """
+
 import functools
 import os
 import shutil
@@ -29,17 +30,21 @@ app = typer.Typer(
 
 # --- Lazy Loaded Console Getters ---
 
+
 @functools.lru_cache(maxsize=1)
-def _get_console(): # --> Console # noqa: F821 ANN202
+def _get_console():  # --> Console # noqa: F821 ANN202
     """Lazy load rich console."""
     from rich.console import Console
+
     console = Console()
     return console
 
+
 @functools.lru_cache(maxsize=1)
-def _get_console_stderr(): # --> Console # noqa: F821 ANN202
+def _get_console_stderr():  # --> Console # noqa: F821 ANN202
     """Lazy load rich stderr console."""
     from rich.console import Console
+
     console_stderr = Console(stderr=True)
     return console_stderr
 
@@ -87,7 +92,7 @@ def _create_symlink(rule_name: str, source_dir: Path, dest_dir: Path) -> bool:
 
 
 @app.command("link")
-def link_rules() -> None: # noqa: C901 PLR0912
+def link_rules() -> None:  # noqa: C901 PLR0912
     """Interactively select and symlink rules from ~/.cursor/rules/ to the current directory."""
     # Import required libraries here
     import questionary
@@ -95,7 +100,7 @@ def link_rules() -> None: # noqa: C901 PLR0912
     console = _get_console()
     console_stderr = _get_console_stderr()
 
-    target_link_dir = TARGET_DIR / ".cursor" / "rules" # Define specific target subdir
+    target_link_dir = TARGET_DIR / ".cursor" / "rules"  # Define specific target subdir
 
     console.print("[bold cyan]Link Cursor Rules[/]")
     console.print(f"Source directory: [dim]{RULES_SOURCE_DIR}[/]")
@@ -103,7 +108,9 @@ def link_rules() -> None: # noqa: C901 PLR0912
 
     # Ensure source directory exists, create if not
     if not RULES_SOURCE_DIR.is_dir():
-        console.print(f"[info]Source directory {RULES_SOURCE_DIR} not found. Creating it...[/]")
+        console.print(
+            f"[info]Source directory {RULES_SOURCE_DIR} not found. Creating it...[/]"
+        )
         try:
             RULES_SOURCE_DIR.mkdir(parents=True, exist_ok=True)
             console.print(f"[success]Created directory: {RULES_SOURCE_DIR}[/]")
@@ -162,7 +169,9 @@ def link_rules() -> None: # noqa: C901 PLR0912
         console.print("[yellow]No rules selected. Exiting.[/]")
         raise typer.Exit()
 
-    console.print(f"\nAttempting to link {len(selected_rules)} selected rules to {target_link_dir}:")
+    console.print(
+        f"\nAttempting to link {len(selected_rules)} selected rules to {target_link_dir}:"
+    )
     success_count = 0
     error_count = 0
 
@@ -171,7 +180,7 @@ def link_rules() -> None: # noqa: C901 PLR0912
         if _create_symlink(rule_name, RULES_SOURCE_DIR, target_link_dir):
             success_count += 1
         else:
-            dest_path = target_link_dir / rule_name # Check against correct target
+            dest_path = target_link_dir / rule_name  # Check against correct target
             if not (dest_path.exists() or dest_path.is_symlink()):
                 error_count += 1
 
@@ -188,8 +197,8 @@ def link_rules() -> None: # noqa: C901 PLR0912
 
 
 @app.command("add")
-def add_rule( # noqa: C901 PLR0912
-    script_path: Path = typer.Argument( # noqa: B008
+def add_rule(  # noqa: C901 PLR0912
+    script_path: Path = typer.Argument(  # noqa: B008
         ...,
         exists=True,
         file_okay=True,
@@ -259,7 +268,9 @@ def add_rule( # noqa: C901 PLR0912
     if copy_success or not should_copy:  # Ask even if copy was skipped but file exists
         if dest_rule_path.exists():  # Ensure source rule exists before asking to link
             console.print("")  # Spacer
-            target_link_dir = TARGET_DIR / ".cursor" / "rules" # Define specific target subdir
+            target_link_dir = (
+                TARGET_DIR / ".cursor" / "rules"
+            )  # Define specific target subdir
             try:
                 # Updated confirmation message
                 create_link = questionary.confirm(
@@ -274,7 +285,7 @@ def add_rule( # noqa: C901 PLR0912
                 raise typer.Exit(code=1) from e
 
             if create_link:
-                 # Ensure target link directory exists, create if not
+                # Ensure target link directory exists, create if not
                 try:
                     target_link_dir.mkdir(parents=True, exist_ok=True)
                 except OSError as e:
@@ -282,11 +293,17 @@ def add_rule( # noqa: C901 PLR0912
                         f"[bold red]Error:[/] Could not create target link directory {target_link_dir}: {e}"
                     )
                     # Don't exit, just report error and skip linking
-                    console.print("[yellow]Symlink creation skipped due to directory error.[/]")
+                    console.print(
+                        "[yellow]Symlink creation skipped due to directory error.[/]"
+                    )
                 else:
                     # Attempt to link to the target subdir
-                    console.print(f"Attempting to link '{rule_name}' to {target_link_dir}...")
-                    if not _create_symlink(rule_name, RULES_SOURCE_DIR, target_link_dir):
+                    console.print(
+                        f"Attempting to link '{rule_name}' to {target_link_dir}..."
+                    )
+                    if not _create_symlink(
+                        rule_name, RULES_SOURCE_DIR, target_link_dir
+                    ):
                         # Error/skip message printed by helper
                         console.print("[yellow]Symlink creation skipped or failed.[/]")
                         # Don't exit with error if only linking failed after successful add/confirmation
@@ -300,7 +317,7 @@ def add_rule( # noqa: C901 PLR0912
 
 
 @app.command("edit")
-def edit_rule() -> None: # noqa: C901 PLR0912
+def edit_rule() -> None:  # noqa: C901 PLR0912
     """Select a rule from ~/.cursor/rules/ and open it for editing."""
     # Import required libraries here
     import questionary
@@ -313,7 +330,9 @@ def edit_rule() -> None: # noqa: C901 PLR0912
 
     # Ensure source directory exists, create if not
     if not RULES_SOURCE_DIR.is_dir():
-        console.print(f"[info]Source directory {RULES_SOURCE_DIR} not found. Creating it...[/]")
+        console.print(
+            f"[info]Source directory {RULES_SOURCE_DIR} not found. Creating it...[/]"
+        )
         try:
             RULES_SOURCE_DIR.mkdir(parents=True, exist_ok=True)
             console.print(f"[success]Created directory: {RULES_SOURCE_DIR}[/]")
