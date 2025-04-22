@@ -110,18 +110,26 @@ def parse_requirements(requirements_path: Path) -> Set[str]:
             for raw_line in f:
                 processed_line = raw_line.strip()
                 # Skip comments and empty lines
-                if not processed_line or processed_line.startswith('#'):
+                if not processed_line or processed_line.startswith("#"):
                     continue
 
                 # Handle line continuations
-                while processed_line.endswith('\\'):
+                while processed_line.endswith("\\"):
                     processed_line = processed_line[:-1].strip()
-                    next_line = next(f, '').strip()
-                    processed_line += ' ' + next_line
+                    next_line = next(f, "").strip()
+                    processed_line += " " + next_line
 
                 # Extract the package name (ignore version specifiers and options)
                 # This is a simplified approach - for complex cases, we might need more
-                package = processed_line.split('=')[0].split('>')[0].split('<')[0].split('!')[0].split('~')[0].split('[')[0].strip()
+                package = (
+                    processed_line.split("=")[0]
+                    .split(">")[0]
+                    .split("<")[0]
+                    .split("!")[0]
+                    .split("~")[0]
+                    .split("[")[0]
+                    .strip()
+                )
                 # Remove any extras
                 if package:
                     requirements.add(package.lower())
@@ -157,7 +165,7 @@ def get_installed_packages(python_executable: Path) -> Set[str]:
     try:
         # Use uv pip list to get installed packages which should be more reliable
         # than running pip through the interpreter (since uv ensures pip is available)
-        result = subprocess.run( # noqa: S603
+        result = subprocess.run(  # noqa: S603
             [uv_path, "pip", "list", "--python", str(python_executable), "--no-input"],
             capture_output=True,
             text=True,
@@ -235,7 +243,10 @@ def find_compatible_environment(
 
 # --- Environment Setup Helpers ---
 
-def _link_to_compatible_environment(env_path: Path, compatible_env: Path, tool_name: str) -> None:
+
+def _link_to_compatible_environment(
+    env_path: Path, compatible_env: Path, tool_name: str
+) -> None:
     """Creates a symlink or junction to a compatible environment."""
     console.print(
         f"Using compatible environment from [highlight]'{compatible_env.name}'[/] for [highlight]'{tool_name}'[/]"
@@ -246,7 +257,7 @@ def _link_to_compatible_environment(env_path: Path, compatible_env: Path, tool_n
         cmd_path = "cmd"
 
         if os.name == "nt":  # Windows
-            subprocess.run( # noqa: S603
+            subprocess.run(  # noqa: S603
                 [cmd_path, "/c", "mklink", "/J", str(env_path), str(compatible_env)],
                 check=True,
                 capture_output=True,
@@ -262,6 +273,7 @@ def _link_to_compatible_environment(env_path: Path, compatible_env: Path, tool_n
         # Alternatively, re-raise the error for setup_environment to handle.
         raise typer.Exit(code=1) from e
 
+
 def _create_new_environment(env_path: Path, tool_name: str) -> None:
     """Creates a new virtual environment using uv."""
     console.print(
@@ -270,7 +282,9 @@ def _create_new_environment(env_path: Path, tool_name: str) -> None:
     ENVS_DIR.mkdir(parents=True, exist_ok=True)
     uv_path = shutil.which("uv")
     if not uv_path:
-        console_stderr.print("[error]Error:[/] 'uv' command not found during environment creation.")
+        console_stderr.print(
+            "[error]Error:[/] 'uv' command not found during environment creation."
+        )
         raise typer.Exit(code=1)
 
     try:
@@ -281,22 +295,30 @@ def _create_new_environment(env_path: Path, tool_name: str) -> None:
             transient=True,
         ) as progress:
             task = progress.add_task(f"Creating venv for {tool_name}...", total=None)
-            result = subprocess.run( # noqa: S603
-                [uv_path, "venv", str(env_path)], check=False, capture_output=True, text=True
+            result = subprocess.run(  # noqa: S603
+                [uv_path, "venv", str(env_path)],
+                check=False,
+                capture_output=True,
+                text=True,
             )
-            result.check_returncode() # Raise CalledProcessError if failed
+            result.check_returncode()  # Raise CalledProcessError if failed
             progress.update(task, completed=True)
         console.print(f"[success]Virtual environment created for '{tool_name}'.[/]")
-    except FileNotFoundError as e: # Should be caught by shutil.which earlier, but defensive
+    except (
+        FileNotFoundError
+    ) as e:  # Should be caught by shutil.which earlier, but defensive
         console_stderr.print("[error]Error:[/] 'uv' command not found.")
         raise typer.Exit(code=1) from e
     except subprocess.CalledProcessError as e:
         console_stderr.print(f"[error]Error creating venv for '{tool_name}':[/]")
         console_stderr.print(f"Command: {' '.join(e.cmd)}")
-        console_stderr.print(f"Output:\n{e.stderr or e.stdout}") # Show error output
+        console_stderr.print(f"Output:\n{e.stderr or e.stdout}")  # Show error output
         raise typer.Exit(code=1) from e
 
-def _install_dependencies(python_executable: Path, requirements_path: Path, tool_name: str) -> None:
+
+def _install_dependencies(
+    python_executable: Path, requirements_path: Path, tool_name: str
+) -> None:
     """Installs dependencies from a requirements file into the environment."""
     if not requirements_path.exists():
         console.print(f"[info]No requirements file found for '{tool_name}'.[/]")
@@ -304,7 +326,9 @@ def _install_dependencies(python_executable: Path, requirements_path: Path, tool
 
     uv_path = shutil.which("uv")
     if not uv_path:
-        console_stderr.print("[error]Error:[/] 'uv' command not found during dependency installation.")
+        console_stderr.print(
+            "[error]Error:[/] 'uv' command not found during dependency installation."
+        )
         raise typer.Exit(code=1)
 
     console.print(
@@ -317,8 +341,10 @@ def _install_dependencies(python_executable: Path, requirements_path: Path, tool
             console=console,
             transient=True,
         ) as progress:
-            task = progress.add_task(f"Installing dependencies for {tool_name}...", total=None)
-            install_result = subprocess.run( # noqa: S603
+            task = progress.add_task(
+                f"Installing dependencies for {tool_name}...", total=None
+            )
+            install_result = subprocess.run(  # noqa: S603
                 [
                     uv_path,
                     "pip",
@@ -328,7 +354,7 @@ def _install_dependencies(python_executable: Path, requirements_path: Path, tool
                     "-r",
                     str(requirements_path),
                 ],
-                check=False, # Check manually below
+                check=False,  # Check manually below
                 capture_output=True,
                 text=True,
             )
@@ -342,7 +368,7 @@ def _install_dependencies(python_executable: Path, requirements_path: Path, tool
                 console.print(f"[dim yellow]{install_result.stderr.strip()}[/]")
             # --- End Debug ---
 
-            install_result.check_returncode() # Raise CalledProcessError if failed
+            install_result.check_returncode()  # Raise CalledProcessError if failed
             progress.update(task, completed=True)
 
         console.print(f"[success]Dependencies installed for '{tool_name}'.[/]")
@@ -353,12 +379,15 @@ def _install_dependencies(python_executable: Path, requirements_path: Path, tool
         console_stderr.print("[error]Error:[/] 'uv' command not found.")
         raise typer.Exit(code=1) from e
     except subprocess.CalledProcessError as e:
-        console_stderr.print(f"[error]Error installing dependencies for '{tool_name}':[/]")
+        console_stderr.print(
+            f"[error]Error installing dependencies for '{tool_name}':[/]"
+        )
         console_stderr.print(f"Command: {' '.join(e.cmd)}")
         # Show stderr first if available, otherwise stdout
         output = e.stderr or e.stdout
         console_stderr.print(f"Output:\n{output.strip()}")
         raise typer.Exit(code=1) from e
+
 
 def setup_environment(tool_name: str, tool_script_path: Path) -> Path:
     """
@@ -370,7 +399,7 @@ def setup_environment(tool_name: str, tool_script_path: Path) -> Path:
     requirements_path = tool_script_path.with_suffix(".requirements.txt")
 
     # 1. Check if environment already exists and seems valid
-    if python_executable.is_file(): # More robust check than just exists()
+    if python_executable.is_file():  # More robust check than just exists()
         # Optional: Add a check here to verify if required packages are installed?
         # For now, assume existing env is okay.
         return python_executable
@@ -383,36 +412,44 @@ def setup_environment(tool_name: str, tool_script_path: Path) -> Path:
             # If linking succeeds, return the python executable from the *linked* path
             return get_python_executable(env_path)
         except Exception:
-             # If linking fails, proceed to create a new environment
-             console.print(f"[warning]Linking failed, creating dedicated environment for {tool_name}...[/]")
+            # If linking fails, proceed to create a new environment
+            console.print(
+                f"[warning]Linking failed, creating dedicated environment for {tool_name}...[/]"
+            )
 
     # 3. Create a new environment
     try:
         _create_new_environment(env_path, tool_name)
     except typer.Exit:
-         raise # Propagate exit
+        raise  # Propagate exit
     except Exception as e:
-         # Catch unexpected errors during creation
-         console_stderr.print(f"[error]Unexpected error during environment creation: {e}[/]")
-         raise typer.Exit(code=1) from e
+        # Catch unexpected errors during creation
+        console_stderr.print(
+            f"[error]Unexpected error during environment creation: {e}[/]"
+        )
+        raise typer.Exit(code=1) from e
 
     # 4. Install dependencies into the newly created environment
     try:
         _install_dependencies(python_executable, requirements_path, tool_name)
     except typer.Exit:
-         raise # Propagate exit
+        raise  # Propagate exit
     except Exception as e:
-         # Catch unexpected errors during installation
-         console_stderr.print(f"[error]Unexpected error during dependency installation: {e}[/]")
-         # Consider removing the partially created env?
-         shutil.rmtree(env_path, ignore_errors=True)
-         raise typer.Exit(code=1) from e
+        # Catch unexpected errors during installation
+        console_stderr.print(
+            f"[error]Unexpected error during dependency installation: {e}[/]"
+        )
+        # Consider removing the partially created env?
+        shutil.rmtree(env_path, ignore_errors=True)
+        raise typer.Exit(code=1) from e
 
     # 5. Return the path to the python executable in the new env
     if not python_executable.is_file():
-         # Final sanity check
-         console_stderr.print(f"[error]Environment setup finished, but Python executable not found at {python_executable}[/]")
-         raise typer.Exit(code=1)
+        # Final sanity check
+        console_stderr.print(
+            f"[error]Environment setup finished, but Python executable not found at {python_executable}[/]"
+        )
+        raise typer.Exit(code=1)
 
     return python_executable
 
@@ -441,7 +478,9 @@ def import_tool_module(tool_script_path: Path) -> Optional[ModuleType]:
     except ModuleNotFoundError as e:
         # This is somewhat expected if the tool has dependencies not in the main env.
         # The fallback execution handles this case.
-        console.print(f"[info]Tool has dependencies (like '{e.name}'), will run as subprocess.")
+        console.print(
+            f"[info]Tool has dependencies (like '{e.name}'), will run as subprocess."
+        )
         return None
     except Exception as e:
         # Other import errors might indicate issues with the script itself.
@@ -534,7 +573,9 @@ def parse_tool_chain(tool_chain_arg: str) -> List[Tuple[str, List[str]]]:
     return tools
 
 
-def run_single_tool(tool_name: str, tool_args: List[str], share_environments: bool = SHARE_ENVIRONMENTS) -> int:
+def run_single_tool(
+    tool_name: str, tool_args: List[str], share_environments: bool = SHARE_ENVIRONMENTS
+) -> int:
     """
     Run a single tool with the given arguments.
 
@@ -547,7 +588,7 @@ def run_single_tool(tool_name: str, tool_args: List[str], share_environments: bo
         Exit code from the tool execution
     """
     # Set the global environment sharing setting
-    global SHARE_ENVIRONMENTS # noqa: PLW0603
+    global SHARE_ENVIRONMENTS  # noqa: PLW0603
     SHARE_ENVIRONMENTS = share_environments
 
     # Locate the tool script
@@ -586,16 +627,25 @@ def run_single_tool(tool_name: str, tool_args: List[str], share_environments: bo
 
     # --- Venv Import Check ---
     console.print(f"[dim]Checking import availability in '{tool_name}' venv...[/]")
-    check_cmd = [str(venv_python_executable), "-c", "import typer; import rich; import requests; import selenium; print('Dependencies imported successfully in venv')"]
-    check_result = subprocess.run(check_cmd, capture_output=True, text=True, check=False) # noqa: S603
+    check_cmd = [
+        str(venv_python_executable),
+        "-c",
+        "import typer; import rich; import requests; import selenium; print('Dependencies imported successfully in venv')",
+    ]
+    check_result = subprocess.run(
+        check_cmd, capture_output=True, text=True, check=False
+    )  # noqa: S603
     if check_result.returncode != 0:
-        console_stderr.print(f"[bold red]Error:[/] Failed to import core dependencies directly within the '{tool_name}' venv ({venv_python_executable})." )
+        console_stderr.print(
+            f"[bold red]Error:[/] Failed to import core dependencies directly within the '{tool_name}' venv ({venv_python_executable})."
+        )
         console_stderr.print(f"Stderr:\n{check_result.stderr or '(No stderr)'}")
         console_stderr.print(f"Stdout:\n{check_result.stdout or '(No stdout)'}")
-        console_stderr.print("[info]The environment might be corrupted. Try removing the directory (rm -rf ~/.jackknife_envs/{tool_name}) and running again.[/]")
-        return 1 # Exit early
-    else:
-        console.print(f"[green]Venv Check:[/] {check_result.stdout.strip()}")
+        console_stderr.print(
+            "[info]The environment might be corrupted. Try removing the directory (rm -rf ~/.jackknife_envs/{tool_name}) and running again.[/]"
+        )
+        return 1  # Exit early
+    console.print(f"[green]Venv Check:[/] {check_result.stdout.strip()}")
     # --- End Venv Import Check ---
 
     # Execute the tool
@@ -651,7 +701,7 @@ def run_single_tool(tool_name: str, tool_args: List[str], share_environments: bo
         ] + tool_args  # Pass remaining args
 
         # Run the tool script, inheriting stdout/stderr, and wait for completion
-        result = subprocess.run(command, check=False) # noqa: S603
+        result = subprocess.run(command, check=False)  # noqa: S603
 
         status_style = "success" if result.returncode == 0 else "error"
         status_text = "SUCCESS" if result.returncode == 0 else "FAILED"
@@ -665,9 +715,7 @@ def run_single_tool(tool_name: str, tool_args: List[str], share_environments: bo
             )
         )
     except KeyboardInterrupt:
-        console_stderr.print(
-            "\n[error]Operation interrupted by user.[/]"
-        )
+        console_stderr.print("\n[error]Operation interrupted by user.[/]")
         return 130
     except Exception as e:
         console_stderr.print(
@@ -741,6 +789,7 @@ def _create_argument_parser() -> argparse.ArgumentParser:
 
     return parser
 
+
 # --- Command Handlers ---
 def _handle_activate_command(tool_name: str) -> None:
     """Handles the logic for the 'activate' command."""
@@ -749,7 +798,7 @@ def _handle_activate_command(tool_name: str) -> None:
     if os.name == "nt" or sys.platform == "win32":  # Windows
         activate_script = env_path / "Scripts" / "activate"
         activate_command = f'call "{activate_script}.bat"'
-        usage_command = f"jackknife activate {tool_name}" # Just show path
+        usage_command = f"jackknife activate {tool_name}"  # Just show path
     else:  # Unix/Linux/macOS
         activate_script = env_path / "bin" / "activate"
         activate_command = f'source "{activate_script}"'
@@ -784,6 +833,7 @@ def _handle_activate_command(tool_name: str) -> None:
         console_stderr.print(f"  [bold cyan]{usage_command}[/]")
     sys.exit(0)
 
+
 def _execute_tool_chain(
     tool_chain: List[Tuple[str, List[str]]],
     share_environments: bool,
@@ -810,8 +860,10 @@ def _execute_tool_chain(
             exit_code = run_single_tool(tool_name, tool_args, share_environments)
         except Exception as e:
             # Catch errors during the execution of a single tool within the chain
-            console_stderr.print(f"[error]Error running tool '{tool_name}' in chain:[/] {e}")
-            exit_code = 1 # Treat exceptions as errors
+            console_stderr.print(
+                f"[error]Error running tool '{tool_name}' in chain:[/] {e}"
+            )
+            exit_code = 1  # Treat exceptions as errors
 
         if exit_code != 0:
             final_exit_code = exit_code
@@ -819,7 +871,7 @@ def _execute_tool_chain(
                 console_stderr.print(
                     f"[error]Chain execution stopped due to error in tool {tool_name}[/]"
                 )
-                break # Stop the chain
+                break  # Stop the chain
         # Continue to the next tool if continue_on_error is true or exit_code is 0
 
     # Show a summary of the chain execution
@@ -835,6 +887,7 @@ def _execute_tool_chain(
         )
     )
     return final_exit_code
+
 
 def _handle_run_command(args: argparse.Namespace) -> None:
     """Handles the logic for the 'run' command, dispatching to single or chain execution."""
@@ -857,10 +910,9 @@ def _handle_run_command(args: argparse.Namespace) -> None:
 
     else:
         # Single tool execution
-        exit_code = run_single_tool(
-            args.tool_arg, args.tool_args, share_environments
-        )
+        exit_code = run_single_tool(args.tool_arg, args.tool_args, share_environments)
         sys.exit(exit_code)
+
 
 # --- Main Entry Point ---
 def main() -> None:
@@ -869,7 +921,7 @@ def main() -> None:
     ensure_uv_installed()
 
     # 2. Setup and parse arguments using subparsers
-    parser = _create_argument_parser() # Function defining subparsers
+    parser = _create_argument_parser()  # Function defining subparsers
     args = parser.parse_args()
 
     # 3. Execute the appropriate command handler based on the chosen subcommand
@@ -877,7 +929,7 @@ def main() -> None:
         if args.command == "activate":
             _handle_activate_command(args.tool_name)
         elif args.command == "run":
-            _handle_run_command(args) # Pass the specific args for the 'run' command
+            _handle_run_command(args)  # Pass the specific args for the 'run' command
         else:
             # This should be unreachable if subparsers are required
             parser.print_help(sys.stderr)
@@ -890,6 +942,7 @@ def main() -> None:
         # Catch-all for unexpected errors during command handling
         console_stderr.print_exception(show_locals=False)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

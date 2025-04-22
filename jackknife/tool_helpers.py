@@ -122,7 +122,8 @@ def _get_arg_spec(arg_type: Any) -> Optional[ArgumentSpec]:
 
 # --- Helper function for adding arguments ---
 
-def _add_argument_from_parameter( # noqa: C901, PLR0912
+
+def _add_argument_from_parameter(  # noqa: C901, PLR0912
     parser: argparse.ArgumentParser,
     param_name: str,
     param: inspect.Parameter,
@@ -148,7 +149,7 @@ def _add_argument_from_parameter( # noqa: C901, PLR0912
         return
 
     # We have a specialized argument specification from @argument
-    arg_spec.name = param_name # Set name from parameter
+    arg_spec.name = param_name  # Set name from parameter
 
     # Determine if this is a positional or optional argument
     has_default = param.default is not inspect.Parameter.empty
@@ -169,19 +170,21 @@ def _add_argument_from_parameter( # noqa: C901, PLR0912
             # Infer flag=True if type hint is bool and flag wasn't set
             arg_spec.flag = True
         elif param_type_hint not in (Any, inspect.Parameter.empty):
-             # Use type hint if available and not Any
-             arg_spec.type = param_type_hint
+            # Use type hint if available and not Any
+            arg_spec.type = param_type_hint
         else:
-             # Fallback to type of default if possible, else str
-             arg_spec.type = type(param.default) if has_default and param.default is not None else str
+            # Fallback to type of default if possible, else str
+            arg_spec.type = (
+                type(param.default)
+                if has_default and param.default is not None
+                else str
+            )
 
     # --- Add the argument based on its type (flag, positional, optional) ---
 
     if arg_spec.flag:
         option_name = f"--{param_name.replace('_', '-')}"
-        short_option = (
-            f"-{arg_spec.short_name}" if arg_spec.short_name else None
-        )
+        short_option = f"-{arg_spec.short_name}" if arg_spec.short_name else None
         opts = [opt for opt in [short_option, option_name] if opt]
 
         # Determine action based on default value in function signature
@@ -202,7 +205,7 @@ def _add_argument_from_parameter( # noqa: C901, PLR0912
                 *opts,
                 dest=param_name,
                 action="store_true",
-                default=False, # Explicitly set default to False
+                default=False,  # Explicitly set default to False
                 help=arg_spec.help or f"Enable {param_name}",
             )
     elif is_positional:
@@ -212,15 +215,13 @@ def _add_argument_from_parameter( # noqa: C901, PLR0912
             type=arg_spec.type,
             nargs=arg_spec.nargs,
             choices=arg_spec.choices,
-            metavar=arg_spec.metavar or param_name.upper(), # Default metavar
+            metavar=arg_spec.metavar or param_name.upper(),  # Default metavar
             help=arg_spec.help,
         )
     else:
         # Optional argument with value (has default in signature or spec)
         option_name = f"--{param_name.replace('_', '-')}"
-        short_option = (
-            f"-{arg_spec.short_name}" if arg_spec.short_name else None
-        )
+        short_option = f"-{arg_spec.short_name}" if arg_spec.short_name else None
         opts = [opt for opt in [short_option, option_name] if opt]
 
         # Use default from function signature if available, otherwise from spec
@@ -240,6 +241,7 @@ def _add_argument_from_parameter( # noqa: C901, PLR0912
 
 
 # --- Main Decorator ---
+
 
 def tool(
     func: Optional[Callable] = None, *, description: Optional[str] = None
@@ -262,13 +264,14 @@ def tool(
     Returns:
         A wrapper function that handles argument parsing
     """
+
     def decorator(func: Callable) -> Callable:
         # Extract function signature and annotations
         sig = inspect.signature(func)
         type_hints = get_type_hints(func)
 
         @functools.wraps(func)
-        def wrapper() -> int: # Simplified wrapper
+        def wrapper() -> int:  # Simplified wrapper
             """Wrapper function that handles argument parsing."""
             # Create parser
             desc = description or func.__doc__ or f"Jackknife tool: {func.__name__}"
@@ -300,15 +303,15 @@ def tool(
         # The original jackknife/cli.py handles the actual *execution*
         # when run via `jackknife run my_tool`.
         if hasattr(func, "__module__") and func.__module__ == "__main__":
-             # When run directly, call the wrapper immediately.
-             # standalone_script helper might be better for this pattern.
+            # When run directly, call the wrapper immediately.
+            # standalone_script helper might be better for this pattern.
             try:
-                 sys.exit(wrapper())
+                sys.exit(wrapper())
             except SystemExit as e:
-                 sys.exit(e.code)
+                sys.exit(e.code)
             except Exception as e:
-                 print(f"Error executing tool directly: {e}", file=sys.stderr)
-                 sys.exit(1)
+                print(f"Error executing tool directly: {e}", file=sys.stderr)
+                sys.exit(1)
 
         return wrapper
 
