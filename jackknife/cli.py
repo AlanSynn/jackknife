@@ -327,7 +327,6 @@ def _install_dependencies(python_executable: Path, requirements_path: Path, tool
                     str(python_executable),
                     "-r",
                     str(requirements_path),
-                    "--no-input", # Add no-input flag
                 ],
                 check=False, # Check manually below
                 capture_output=True,
@@ -585,6 +584,20 @@ def run_single_tool(tool_name: str, tool_args: List[str], share_environments: bo
         )
         return 1
 
+    # --- Venv Import Check ---
+    console.print(f"[dim]Checking import availability in '{tool_name}' venv...[/]")
+    check_cmd = [str(venv_python_executable), "-c", "import typer; import rich; import requests; import selenium; print('Dependencies imported successfully in venv')"]
+    check_result = subprocess.run(check_cmd, capture_output=True, text=True, check=False) # noqa: S603
+    if check_result.returncode != 0:
+        console_stderr.print(f"[bold red]Error:[/] Failed to import core dependencies directly within the '{tool_name}' venv ({venv_python_executable})." )
+        console_stderr.print(f"Stderr:\n{check_result.stderr or '(No stderr)'}")
+        console_stderr.print(f"Stdout:\n{check_result.stdout or '(No stdout)'}")
+        console_stderr.print("[info]The environment might be corrupted. Try removing the directory (rm -rf ~/.jackknife_envs/{tool_name}) and running again.[/]")
+        return 1 # Exit early
+    else:
+        console.print(f"[green]Venv Check:[/] {check_result.stdout.strip()}")
+    # --- End Venv Import Check ---
+
     # Execute the tool
     console.print(
         Panel.fit(
@@ -668,52 +681,167 @@ def run_single_tool(tool_name: str, tool_args: List[str], share_environments: bo
     return result.returncode
 
 
-def main() -> None:
-    # 1. Ensure uv is available
-    ensure_uv_installed()
-
-    # 2. Parse arguments
+# --- Argument Parsing Setup ---
+def _create_argument_parser() -> argparse.ArgumentParser:
+    """Creates and configures the main argument parser and subparsers."""
     parser = argparse.ArgumentParser(
         description="Jackknife: Run tools in isolated environments.",
-        usage="jackknife <tool_name | tool_chain> [tool_args...]",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    subparsers = parser.add_subparsers(
+        dest="command",
+        title="Commands",
+        help="Use 'jackknife <command> --help' for more information on a command.",
+        required=True,  # Require a command (run or activate)
+    )
+
+    # --- 'run' command --- (Existing functionality)
+    parser_run = subparsers.add_parser(
+        "run",
+        help="Run a single tool or a chain of tools.",
+        usage="jackknife run <tool_name | tool_chain> [tool_args...]",
         epilog=(
             "Tool chain examples:\n"
-            "  jackknife tool1,tool2,tool3\n"
-            '  jackknife "tool1[--arg1 val1],tool2[--arg2 val2]"\n'
+            "  jackknife run tool1,tool2,tool3\n"
+            '  jackknife run "tool1[--arg1 val1],tool2[--arg2 val2]"\n'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument(
+    parser_run.add_argument(
         "tool_arg",
         help="Name of the tool to run (e.g., giftomp4) or comma-separated chain (e.g., tool1,tool2)",
     )
-    parser.add_argument(
+    parser_run.add_argument(
         "tool_args",
         nargs=argparse.REMAINDER,
         help="Arguments to pass to the tool script (for single tool mode only)",
     )
-    parser.add_argument(
+    parser_run.add_argument(
         "--continue-on-error",
         action="store_true",
         help="Continue executing tools in a chain even if previous tools fail",
     )
-    parser.add_argument(
+    parser_run.add_argument(
         "--no-share-environments",
         action="store_false",
         dest="share_environments",
+        default=SHARE_ENVIRONMENTS,  # Default comes from global config
         help="Disable environment sharing between compatible tools",
     )
 
-    args = parser.parse_args()
+    # --- 'activate' command ---
+    parser_activate = subparsers.add_parser(
+        "activate",
+        help="Print the shell command to activate the virtual environment for a specific tool.",
+        usage="jackknife activate <tool_name>",
+    )
+    parser_activate.add_argument(
+        "tool_name", help="Name of the tool whose environment should be activated."
+    )
 
-    # Override environment sharing if specified
-    share_environments = SHARE_ENVIRONMENTS
-    if hasattr(args, "share_environments"):
-        share_environments = args.share_environments
+    return parser
+
+# --- Command Handlers ---
+def _handle_activate_command(tool_name: str) -> None:
+    """Handles the logic for the 'activate' command."""
+    env_path = ENVS_DIR / tool_name
+    # Determine activate script path based on OS
+    if os.name == "nt" or sys.platform == "win32":  # Windows
+        activate_script = env_path / "Scripts" / "activate"
+        activate_command = f'call "{activate_script}.bat"'
+        usage_command = f"jackknife activate {tool_name}" # Just show path
+    else:  # Unix/Linux/macOS
+        activate_script = env_path / "bin" / "activate"
+        activate_command = f'source "{activate_script}"'
+        usage_command = f"eval $(jackknife activate {tool_name})"
+
+    if not env_path.is_dir():
+        console_stderr.print(
+            f"[error]Error:[/] Environment directory not found for tool '{tool_name}': {env_path}"
+        )
+        console_stderr.print(
+            f"[info]Hint:[/] Run the tool at least once ('jackknife run {tool_name}') to create its environment."
+        )
+        sys.exit(1)
+
+    if not activate_script.is_file():
+        console_stderr.print(
+            f"[error]Error:[/] Activation script not found: {activate_script}"
+        )
+        console_stderr.print(
+            f"[info]Hint:[/] The environment might be corrupted. Try removing the directory (rm -rf '{env_path}') and running the tool again."
+        )
+        sys.exit(1)
+
+    # Print the command to stdout for eval/call
+    print(activate_command)
+
+    # Print instructions to stderr
+    if os.name != "nt":  # Only print eval suggestion for non-Windows
+        console_stderr.print(
+            f"\n[info]To activate the '{tool_name}' environment in your current shell, run:[/]"
+        )
+        console_stderr.print(f"  [bold cyan]{usage_command}[/]")
+    sys.exit(0)
+
+def _execute_tool_chain(
+    tool_chain: List[Tuple[str, List[str]]],
+    share_environments: bool,
+    continue_on_error: bool,
+) -> int:
+    """Executes a sequence of tools, handling errors and printing status."""
+    final_exit_code = 0
+    console.print(
+        Panel.fit(
+            f"Starting execution of [bold]{len(tool_chain)}[/] tools in sequence",
+            title="JACKKNIFE: CHAIN EXECUTION",
+            title_align="left",
+            style="blue",
+        )
+    )
+
+    for i, (tool_name, tool_args) in enumerate(tool_chain):
+        console.print(
+            f"[bold cyan]({i + 1}/{len(tool_chain)})[/] Running tool: [bold]{tool_name}[/]"
+        )
+
+        # Pass share_environments to run_single_tool
+        try:
+            exit_code = run_single_tool(tool_name, tool_args, share_environments)
+        except Exception as e:
+            # Catch errors during the execution of a single tool within the chain
+            console_stderr.print(f"[error]Error running tool '{tool_name}' in chain:[/] {e}")
+            exit_code = 1 # Treat exceptions as errors
+
+        if exit_code != 0:
+            final_exit_code = exit_code
+            if not continue_on_error:
+                console_stderr.print(
+                    f"[error]Chain execution stopped due to error in tool {tool_name}[/]"
+                )
+                break # Stop the chain
+        # Continue to the next tool if continue_on_error is true or exit_code is 0
+
+    # Show a summary of the chain execution
+    status_style = "success" if final_exit_code == 0 else "error"
+    status_text = "SUCCESS" if final_exit_code == 0 else "FAILED"
+
+    console.print(
+        Panel.fit(
+            f"Chain execution of {len(tool_chain)} tools finished with overall exit code: [{status_style}]{final_exit_code}[/]\n",
+            title=f"JACKKNIFE CHAIN: {status_text}",
+            title_align="left",
+            style="blue",
+        )
+    )
+    return final_exit_code
+
+def _handle_run_command(args: argparse.Namespace) -> None:
+    """Handles the logic for the 'run' command, dispatching to single or chain execution."""
+    share_environments = args.share_environments
 
     # Check if we're running a chain of tools
     if "," in args.tool_arg:
-        # Parse the tool chain
         tool_chain = parse_tool_chain(args.tool_arg)
 
         if args.tool_args:
@@ -722,52 +850,46 @@ def main() -> None:
                 "Arguments are ignored. Use tool1[arg1 arg2],tool2[arg3 arg4] syntax instead."
             )
 
-        # Execute each tool in sequence
-        final_exit_code = 0
-        console.print(
-            Panel.fit(
-                f"Starting execution of [bold]{len(tool_chain)}[/] tools in sequence",
-                title="JACKKNIFE: CHAIN EXECUTION",
-                title_align="left",
-                style="blue",
-            )
+        final_exit_code = _execute_tool_chain(
+            tool_chain, share_environments, args.continue_on_error
         )
-
-        for i, (tool_name, tool_args) in enumerate(tool_chain):
-            console.print(
-                f"[bold cyan]({i + 1}/{len(tool_chain)})[/] Running tool: [bold]{tool_name}[/]"
-            )
-
-            # Pass share_environments to run_single_tool
-            exit_code = run_single_tool(tool_name, tool_args, share_environments)
-
-            if exit_code != 0:
-                final_exit_code = exit_code
-                if not args.continue_on_error:
-                    console_stderr.print(
-                        f"[error]Chain execution stopped due to error in tool {tool_name}[/]"
-                    )
-                    break
-
-        # Show a summary of the chain execution
-        status_style = "success" if final_exit_code == 0 else "error"
-        status_text = "SUCCESS" if final_exit_code == 0 else "FAILED"
-
-        console.print(
-            Panel.fit(
-                f"Chain execution of {len(tool_chain)} tools finished with overall exit code: [{status_style}]{final_exit_code}[/]",
-                title=f"JACKKNIFE CHAIN: {status_text}",
-                title_align="left",
-                style="blue",
-            )
-        )
-
         sys.exit(final_exit_code)
+
     else:
         # Single tool execution
-        exit_code = run_single_tool(args.tool_arg, args.tool_args, share_environments)
+        exit_code = run_single_tool(
+            args.tool_arg, args.tool_args, share_environments
+        )
         sys.exit(exit_code)
 
+# --- Main Entry Point ---
+def main() -> None:
+    """Main entry point for the Jackknife CLI."""
+    # 1. Ensure uv is available
+    ensure_uv_installed()
+
+    # 2. Setup and parse arguments using subparsers
+    parser = _create_argument_parser() # Function defining subparsers
+    args = parser.parse_args()
+
+    # 3. Execute the appropriate command handler based on the chosen subcommand
+    try:
+        if args.command == "activate":
+            _handle_activate_command(args.tool_name)
+        elif args.command == "run":
+            _handle_run_command(args) # Pass the specific args for the 'run' command
+        else:
+            # This should be unreachable if subparsers are required
+            parser.print_help(sys.stderr)
+            sys.exit(1)
+    except KeyboardInterrupt:
+        # Centralized handling for Ctrl+C if it wasn't caught deeper
+        console_stderr.print("\n[error]Operation interrupted by user.[/]")
+        sys.exit(130)
+    except Exception:
+        # Catch-all for unexpected errors during command handling
+        console_stderr.print_exception(show_locals=False)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
