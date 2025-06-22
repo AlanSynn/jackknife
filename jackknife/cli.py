@@ -625,29 +625,6 @@ def run_single_tool(
         )
         return 1
 
-    # --- Venv Import Check ---
-    console.print(f"[dim]Checking import availability in '{tool_name}' venv...[/]")
-    check_cmd = [
-        str(venv_python_executable),
-        "-c",
-        "import typer; import rich; import requests; import selenium; print('Dependencies imported successfully in venv')",
-    ]
-    check_result = subprocess.run(
-        check_cmd, capture_output=True, text=True, check=False
-    )  # noqa: S603
-    if check_result.returncode != 0:
-        console_stderr.print(
-            f"[bold red]Error:[/] Failed to import core dependencies directly within the '{tool_name}' venv ({venv_python_executable})."
-        )
-        console_stderr.print(f"Stderr:\n{check_result.stderr or '(No stderr)'}")
-        console_stderr.print(f"Stdout:\n{check_result.stdout or '(No stdout)'}")
-        console_stderr.print(
-            "[info]The environment might be corrupted. Try removing the directory (rm -rf ~/.jackknife_envs/{tool_name}) and running again.[/]"
-        )
-        return 1  # Exit early
-    console.print(f"[green]Venv Check:[/] {check_result.stdout.strip()}")
-    # --- End Venv Import Check ---
-
     # Execute the tool
     console.print(
         Panel.fit(

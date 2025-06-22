@@ -18,7 +18,8 @@ classifiers = [
 # No runtime dependencies needed for the core runner itself yet
 # Dependencies for the *tools* are handled separately
 dependencies = [
-    "rich>=13.0.0",  # For pretty terminal output
+    "requests>=2.32.4",
+    "rich>=13.0.0", # For pretty terminal output
     "typer>=0.11.0",
 ]
 
